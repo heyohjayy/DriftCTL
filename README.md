@@ -47,4 +47,6 @@ Supported in Sprint 2:
 - S3 buckets, public-access blocks, and default encryption
 - EC2 instances
 
+Security-group rules can be represented inline or as standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources. Unsupported managed Terraform resource types are skipped deliberately and reported under **Collection Diagnostics**; they are never misclassified as missing infrastructure.
+
 See `docs/architecture.md` for the flow and `infra/terraform` for sample managed infrastructure.

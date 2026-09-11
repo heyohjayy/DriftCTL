@@ -13,6 +13,12 @@ _SEVERITY_ORDER = (Severity.CRITICAL, Severity.SEVERE, Severity.MODERATE, Severi
 
 def render_markdown(result: ScanResult) -> str:
     lines = ["# Infrastructure Drift Report", "", f"- Scan ID: `{result.scan_id}`", f"- Generated: `{result.timestamp}`", f"- Expected resources: {result.expected_count}", f"- Live resources: {result.live_count}", f"- Findings: {len(result.findings)}", ""]
+    if result.diagnostics:
+        lines.extend(["## Collection Diagnostics", ""])
+        for diagnostic in result.diagnostics:
+            address = f" `{diagnostic.resource_address}`" if diagnostic.resource_address else ""
+            lines.append(f"- [{diagnostic.source}]{address}: {diagnostic.message}")
+        lines.append("")
     if not result.findings:
         return "\n".join(lines + ["No drift detected.", ""])
     grouped = defaultdict(list)

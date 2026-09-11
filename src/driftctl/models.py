@@ -54,6 +54,13 @@ class RemediationRecommendation:
     actions: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class CollectionDiagnostic:
+    source: str
+    message: str
+    resource_address: str | None = None
+
+
 @dataclass
 class Finding:
     drift_type: DriftType
@@ -74,3 +81,4 @@ class ScanResult:
     expected_count: int
     live_count: int
     findings: tuple[Finding, ...]
+    diagnostics: tuple[CollectionDiagnostic, ...] = ()

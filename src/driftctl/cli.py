@@ -10,7 +10,7 @@ from uuid import uuid4
 import typer
 
 from driftctl.adapters.boto3_snapshots import adapt_boto3_inventory
-from driftctl.adapters.terraform_state import adapt_terraform_state
+from driftctl.adapters.terraform_state import adapt_terraform_state_with_diagnostics
 from driftctl.audit import write_audit_log
 from driftctl.collectors.aws import AwsCollectionError, collect_live_inventory
 from driftctl.detector import detect_drift
@@ -44,13 +44,21 @@ def scan(
         _validate_sources(expected, live, terraform_dir, profile, region, role_arn)
         expected_payload = _load_json(expected) if expected else load_terraform_state(terraform_dir)
         live_payload = _load_json(live) if live else collect_live_inventory(profile, region, role_arn)
-        expected_snapshots = adapt_terraform_state(expected_payload)
+        expected_adaptation = adapt_terraform_state_with_diagnostics(expected_payload)
+        expected_snapshots = expected_adaptation.snapshots
         live_snapshots = adapt_boto3_inventory(live_payload)
         findings = detect_drift(expected_snapshots, live_snapshots)
         rules = default_rules()
         for finding in findings:
             classify_finding(finding, rules)
-        result = ScanResult(str(uuid4()), datetime.now(UTC).isoformat(), len(expected_snapshots), len(live_snapshots), tuple(findings))
+        result = ScanResult(
+            str(uuid4()),
+            datetime.now(UTC).isoformat(),
+            len(expected_snapshots),
+            len(live_snapshots),
+            tuple(findings),
+            expected_adaptation.diagnostics,
+        )
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(render_markdown(result), encoding="utf-8")
         event_count = write_audit_log(audit, result)

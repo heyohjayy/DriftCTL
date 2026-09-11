@@ -20,22 +20,30 @@ def _tags(raw_tags: list[dict[str, str]]) -> dict[str, str]:
 
 
 def _security_group(group: dict[str, Any]) -> ResourceSnapshot:
-    ingress: list[dict[str, Any]] = []
-    for permission in group.get("IpPermissions", []):
-        cidrs = [entry["CidrIp"] for entry in permission.get("IpRanges", []) if "CidrIp" in entry]
-        ipv6_cidrs = [entry["CidrIpv6"] for entry in permission.get("Ipv6Ranges", []) if "CidrIpv6" in entry]
-        ingress.append({
-            "from_port": permission.get("FromPort"),
-            "to_port": permission.get("ToPort"),
-            "protocol": permission.get("IpProtocol"),
-            "cidr_blocks": sorted(cidrs),
-            "ipv6_cidr_blocks": sorted(ipv6_cidrs),
-        })
+    ingress = [_normalize_security_group_permission(permission) for permission in group.get("IpPermissions", [])]
+    egress = [_normalize_security_group_permission(permission) for permission in group.get("IpPermissionsEgress", [])]
     return ResourceSnapshot(
         identity=ResourceIdentity("aws", "security_group", group.get("GroupName") or group["GroupId"]),
         category=ResourceCategory.NETWORKING,
-        attributes={"vpc_id": group.get("VpcId"), "ingress": ingress, "tags": _tags(group.get("Tags", []))},
+        attributes={
+            "vpc_id": group.get("VpcId"),
+            "ingress": ingress,
+            "egress": egress,
+            "tags": _tags(group.get("Tags", [])),
+        },
     )
+
+
+def _normalize_security_group_permission(permission: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "from_port": permission.get("FromPort"),
+        "to_port": permission.get("ToPort"),
+        "protocol": permission.get("IpProtocol"),
+        "cidr_blocks": sorted(entry["CidrIp"] for entry in permission.get("IpRanges", []) if "CidrIp" in entry),
+        "ipv6_cidr_blocks": sorted(entry["CidrIpv6"] for entry in permission.get("Ipv6Ranges", []) if "CidrIpv6" in entry),
+        "prefix_list_ids": sorted(entry["PrefixListId"] for entry in permission.get("PrefixListIds", []) if "PrefixListId" in entry),
+        "security_group_ids": sorted(entry["GroupId"] for entry in permission.get("UserIdGroupPairs", []) if "GroupId" in entry),
+    }
 
 
 def _s3_bucket(bucket: dict[str, Any]) -> ResourceSnapshot:
