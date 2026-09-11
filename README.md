@@ -1,52 +1,73 @@
 # Infrastructure Drift Control Platform
 
-`driftctl` is a read-only drift engine for comparing Terraform state with AWS inventory. It is designed for an operational workflow: identify divergence, classify its risk, recommend a safe next action, and retain an append-only decision trail.
+`driftctl` is a read-only Terraform drift-detection and remediation-planning tool for AWS. It helps teams identify and safely resolve Terraform state drift: the common situation where a Terraform-managed environment no longer matches the configuration that exists in AWS.
 
-Sprint 2 adds real collection while preserving the local workflow. The Terraform CLI loader and AWS collector feed the same provider-neutral adapters used by JSON fixtures. No command invokes Terraform apply, writes Terraform state, or calls AWS mutation APIs.
+The tool compares Terraform's recorded expected state with live AWS inventory, identifies the difference, classifies its risk, recommends a safe next action, and records an append-only audit trail. It never runs `terraform apply`, changes Terraform state, or calls AWS mutation APIs.
 
-## Quick start
+## Platform Capabilities
 
-Python 3.11+ is required.
+| Capability | What it provides |
+| --- | --- |
+| Expected versus live comparison | Loads Terraform state through `terraform show -json`, collects supported AWS configuration through read-only APIs, and compares normalized resource snapshots. |
+| Drift taxonomy | Classifies every finding as `missing`, `unmanaged`, or `modified`, so teams can distinguish deleted resources, AWS-only resources, and changed configuration. |
+| Risk classification | Uses modular severity rules to classify findings as minor, moderate, severe, or critical. Public SSH, RDP, and all-port security-group exposure are treated as critical risks. |
+| Reports and audit history | Produces a Markdown report grouped by resource category and severity, plus append-only JSONL audit events for each scan, finding, and recommendation. |
+| Read-only AWS access | Uses a dedicated least-privilege AWS policy and only `Describe`, `List`, and `Get` collection APIs. The scanner observes and reports; it does not apply remediation. |
+| Environment scoping | Supports repeatable `--tag KEY=VALUE` filters so a scan can focus on one environment without unrelated regional resources creating findings. |
+| Current AWS coverage | EC2 instances, security groups and their inline or standalone Terraform rules, plus S3 bucket public-access and encryption controls. Unsupported Terraform types are reported as collection diagnostics rather than misclassified as drift. |
+| Broader platform scope | The architecture is designed to extend coverage to VPCs, subnets, route tables, availability zones, load balancers, Lambda functions, Route 53, and IAM configuration. Each added service follows the same adapter, collector, comparison, severity, reporting, and validation pattern. |
+| Team operation | The intended operational model supports direct CLI use and a dedicated Jenkins monitoring pipeline for scheduled and manual scans, report and audit retention, and critical-drift notifications. GitHub Actions can also serve as an additional runner. |
+
+## Quick Start
+
+The offline demonstration is the fastest way to see the tool work. It uses included fixture files that resemble Terraform state and boto3 responses, so it does not access an AWS account or require credentials.
+
+Python 3.11 or later is required. From the repository directory, create and activate an isolated Python environment:
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-driftctl scan --expected examples/expected.json --live examples/live.json --report reports/drift-report.md --audit audit/events.jsonl
 ```
 
-The command writes a Markdown report and appends JSONL audit events. This offline path remains credential-free and is the best starting point for development and CI.
+```powershell
+.venv\Scripts\Activate.ps1
+```
 
-For a complete newcomer-oriented walkthrough, including safe live AWS testing and screenshot guidance, read [the setup and usage guide](docs/SETUP.md).
+Install the project and development dependencies:
 
-## Safe AWS demo
+```powershell
+python -m pip install -e ".[dev]"
+```
 
-Use an initialized Terraform working directory with access to the state you intend to inspect. The loader runs only `terraform show -json`; it does not run `init`, `plan`, `apply`, or `refresh`.
+Run the offline scan:
 
-Attach [the supplied read-only IAM policy](infra/iam/driftctl-read-only-policy.json) to the collecting principal or assumed role. When using `--role-arn`, the source principal also needs a narrowly scoped `sts:AssumeRole` permission for that role. Copy [the sample environment file](examples/aws-demo.env.example) as a reference for the values; do not store AWS credentials in it.
+```powershell
+driftctl scan --expected examples\expected.json --live examples\live.json --report reports\offline-drift-report.md --audit audit\offline-events.jsonl
+```
+
+The command writes a Markdown report and appends JSONL audit events. This credential-free workflow is useful for local evaluation, development, and CI.
+
+For a complete step-by-step guide to using DriftCTL manually, including safe live AWS testing and evidence screenshots, read [the setup and usage guide](docs/SETUP.md).
+
+## Safe Live AWS Scan
+
+Use an initialized Terraform working directory with access to the state you intend to inspect. DriftCTL runs only `terraform show -json`; it does not run `init`, `plan`, `apply`, or `refresh`.
+
+Attach [the supplied read-only IAM policy](infra/iam/driftctl-read-only-policy.json) to the collecting principal or assumed role. When using `--role-arn`, the source principal also needs a narrowly scoped `sts:AssumeRole` permission for that role. Copy [the sample environment file](examples/aws-demo.env.example) as a reference for configuration values, but do not store AWS credentials in it.
+
+The following command scans one tagged environment. Replace the Terraform directory, region, and tag with values for your own non-production infrastructure:
 
 ```powershell
 driftctl scan `
-  --terraform-dir infra/terraform `
+  --terraform-dir C:\path\to\your\terraform-project `
   --profile driftctl-readonly `
-  --region us-east-1 `
-  --role-arn arn:aws:iam::123456789012:role/driftctl-readonly `
-  --report reports/aws-drift-report.md `
-  --audit audit/events.jsonl
+  --region eu-west-1 `
+  --tag Project=Test `
+  --report reports\live-baseline-report.md `
+  --audit audit\live-baseline-events.jsonl
 ```
 
-`--expected` and `--terraform-dir` are mutually exclusive. Supplying `--live` keeps the scan offline; omitting it enables AWS collection and requires an explicit `--region`. The collector uses only `Describe`, `List`, and `Get` APIs for EC2, security groups, and S3 bucket controls.
+`--expected` and `--terraform-dir` are mutually exclusive. Supplying `--live` keeps the scan offline; omitting it enables AWS collection and requires an explicit `--region`.
 
-## Design
+Use repeatable `--tag KEY=VALUE` options to restrict a scan to resources that match every supplied tag. The scope is applied to both expected and live snapshots, so resources outside it cannot create missing, unmanaged, or modified findings. The report and audit log record the active scope for later review.
 
-The source adapters translate Terraform `terraform show -json`-style data and boto3 response-shaped data into `ResourceSnapshot` objects. The detector compares only those shared models and emits exactly `missing`, `unmanaged`, or `modified` findings. Severity policies are independent rules evaluated after detection, so policies can be changed without modifying the comparison loop.
-
-Supported in Sprint 2:
-
-- AWS security groups / VPC networking
-- S3 buckets, public-access blocks, and default encryption
-- EC2 instances
-
-Security-group rules can be represented inline or as standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources. Unsupported managed Terraform resource types are skipped deliberately and reported under **Collection Diagnostics**; they are never misclassified as missing infrastructure.
-
-See `docs/architecture.md` for the flow and `infra/terraform` for sample managed infrastructure.
+See [the architecture notes](docs/architecture.md) for the processing flow and [the setup guide](docs/SETUP.md) for the full manual workflow.
