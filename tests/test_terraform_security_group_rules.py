@@ -110,6 +110,33 @@ def test_added_public_ssh_on_standalone_rule_security_group_is_critical() -> Non
     assert findings[0].severity is Severity.CRITICAL
 
 
+def test_separate_ipv4_and_ipv6_egress_rules_match_one_combined_boto3_permission() -> None:
+    expected_payload = _terraform_state()
+    expected_payload["values"]["root_module"]["resources"].append({
+        "address": "aws_vpc_security_group_egress_rule.web_https_ipv6",
+        "mode": "managed",
+        "type": "aws_vpc_security_group_egress_rule",
+        "name": "web_https_ipv6",
+        "values": {
+            "security_group_id": "sg-0123",
+            "ip_protocol": "tcp",
+            "from_port": 443,
+            "to_port": 443,
+            "cidr_ipv6": "2001:db8:1234::/48",
+        },
+    })
+    live_payload = _live_security_group()
+    live_payload["SecurityGroups"][0]["IpPermissionsEgress"][0]["Ipv6Ranges"] = [
+        {"CidrIpv6": "2001:db8:1234::/48"}
+    ]
+
+    expected = adapt_terraform_state_with_diagnostics(expected_payload)
+    live = adapt_boto3_inventory(live_payload)
+
+    assert expected.snapshots[0].attributes["egress"] == live[0].attributes["egress"]
+    assert detect_drift(expected.snapshots, live) == []
+
+
 def test_unsupported_managed_resource_is_reported_as_a_collection_diagnostic() -> None:
     adaptation = adapt_terraform_state_with_diagnostics({
         "values": {

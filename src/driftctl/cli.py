@@ -17,6 +17,7 @@ from driftctl.detector import detect_drift
 from driftctl.loaders.terraform_cli import TerraformStateLoadError, load_terraform_state
 from driftctl.models import ScanResult
 from driftctl.reporting import render_markdown
+from driftctl.scoping import filter_snapshots_by_tag_scope, format_tag_scope, parse_tag_scope
 from driftctl.severity_rules import classify_finding, default_rules
 
 
@@ -36,17 +37,19 @@ def scan(
     profile: str | None = typer.Option(None, "--profile", help="AWS shared-config profile for live collection."),
     region: str | None = typer.Option(None, "--region", help="AWS region for live collection."),
     role_arn: str | None = typer.Option(None, "--role-arn", help="Optional role to assume before live collection."),
+    tag: list[str] = typer.Option([], "--tag", help="Repeatable environment scope in KEY=VALUE form."),
     report: Path = typer.Option(..., "--report", help="Markdown report destination."),
     audit: Path = typer.Option(..., "--audit", help="Append-only JSONL audit destination."),
 ) -> None:
     """Compare inventories and write findings without modifying infrastructure."""
     try:
+        tag_scope = parse_tag_scope(tag)
         _validate_sources(expected, live, terraform_dir, profile, region, role_arn)
         expected_payload = _load_json(expected) if expected else load_terraform_state(terraform_dir)
-        live_payload = _load_json(live) if live else collect_live_inventory(profile, region, role_arn)
+        live_payload = _load_json(live) if live else collect_live_inventory(profile, region, role_arn, tag_scope)
         expected_adaptation = adapt_terraform_state_with_diagnostics(expected_payload)
-        expected_snapshots = expected_adaptation.snapshots
-        live_snapshots = adapt_boto3_inventory(live_payload)
+        expected_snapshots = filter_snapshots_by_tag_scope(expected_adaptation.snapshots, tag_scope)
+        live_snapshots = filter_snapshots_by_tag_scope(adapt_boto3_inventory(live_payload), tag_scope)
         findings = detect_drift(expected_snapshots, live_snapshots)
         rules = default_rules()
         for finding in findings:
@@ -57,7 +60,7 @@ def scan(
             len(expected_snapshots),
             len(live_snapshots),
             tuple(findings),
-            expected_adaptation.diagnostics,
+            expected_adaptation.diagnostics + _scope_diagnostics(tag_scope),
         )
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(render_markdown(result), encoding="utf-8")
@@ -86,6 +89,14 @@ def _validate_sources(
         raise ValueError("--profile, --region, and --role-arn are only valid when collecting live AWS inventory.")
     if live is None and not region:
         raise ValueError("--region is required when --live is omitted for real AWS collection.")
+
+
+def _scope_diagnostics(tag_scope: dict[str, str]) -> tuple:
+    if not tag_scope:
+        return ()
+    from driftctl.models import CollectionDiagnostic
+
+    return (CollectionDiagnostic("tag_scope", f"Active tag scope: {format_tag_scope(tag_scope)}."),)
 
 
 if __name__ == "__main__":

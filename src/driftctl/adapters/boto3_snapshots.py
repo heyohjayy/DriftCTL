@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
 from driftctl.models import ResourceCategory, ResourceIdentity, ResourceSnapshot
 
 
@@ -20,8 +21,12 @@ def _tags(raw_tags: list[dict[str, str]]) -> dict[str, str]:
 
 
 def _security_group(group: dict[str, Any]) -> ResourceSnapshot:
-    ingress = [_normalize_security_group_permission(permission) for permission in group.get("IpPermissions", [])]
-    egress = [_normalize_security_group_permission(permission) for permission in group.get("IpPermissionsEgress", [])]
+    ingress = canonicalize_security_group_rules(
+        _normalize_security_group_permission(permission) for permission in group.get("IpPermissions", [])
+    )
+    egress = canonicalize_security_group_rules(
+        _normalize_security_group_permission(permission) for permission in group.get("IpPermissionsEgress", [])
+    )
     return ResourceSnapshot(
         identity=ResourceIdentity("aws", "security_group", group.get("GroupName") or group["GroupId"]),
         category=ResourceCategory.NETWORKING,

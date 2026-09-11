@@ -19,29 +19,30 @@ class AwsInventoryCollector:
         self.ec2_client = ec2_client
         self.s3_client = s3_client
 
-    def collect(self) -> dict[str, Any]:
+    def collect(self, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
+        tag_scope = tag_scope or {}
         try:
             return {
-                "SecurityGroups": self._collect_security_groups(),
-                "Buckets": self._collect_buckets(),
-                "Reservations": self._collect_reservations(),
+                "SecurityGroups": self._collect_security_groups(tag_scope),
+                "Buckets": self._collect_buckets(tag_scope),
+                "Reservations": self._collect_reservations(tag_scope),
             }
         except (BotoCoreError, ClientError) as error:
             raise AwsCollectionError(f"Read-only AWS inventory collection failed: {error}") from error
 
-    def _collect_security_groups(self) -> list[dict[str, Any]]:
+    def _collect_security_groups(self, tag_scope: dict[str, str]) -> list[dict[str, Any]]:
         groups: list[dict[str, Any]] = []
-        for page in self.ec2_client.get_paginator("describe_security_groups").paginate():
+        for page in self.ec2_client.get_paginator("describe_security_groups").paginate(**_ec2_tag_filters(tag_scope)):
             groups.extend(page.get("SecurityGroups", []))
         return groups
 
-    def _collect_reservations(self) -> list[dict[str, Any]]:
+    def _collect_reservations(self, tag_scope: dict[str, str]) -> list[dict[str, Any]]:
         reservations: list[dict[str, Any]] = []
-        for page in self.ec2_client.get_paginator("describe_instances").paginate():
+        for page in self.ec2_client.get_paginator("describe_instances").paginate(**_ec2_tag_filters(tag_scope)):
             reservations.extend(page.get("Reservations", []))
         return reservations
 
-    def _collect_buckets(self) -> list[dict[str, Any]]:
+    def _collect_buckets(self, tag_scope: dict[str, str]) -> list[dict[str, Any]]:
         buckets: list[dict[str, Any]] = []
         for bucket in self.s3_client.list_buckets().get("Buckets", []):
             name = bucket["Name"]
@@ -49,7 +50,8 @@ class AwsInventoryCollector:
             enriched["PublicAccessBlockConfiguration"] = self._public_access_block(name)
             enriched["BucketEncryption"] = self._bucket_encryption(name)
             enriched["Tags"] = self._bucket_tags(name)
-            buckets.append(enriched)
+            if _matches_tag_scope(enriched["Tags"], tag_scope):
+                buckets.append(enriched)
         return buckets
 
     def _public_access_block(self, bucket: str) -> dict[str, Any]:
@@ -78,10 +80,28 @@ class AwsInventoryCollector:
             raise
 
 
-def collect_live_inventory(profile: str | None, region: str, role_arn: str | None) -> dict[str, Any]:
+def collect_live_inventory(
+    profile: str | None,
+    region: str,
+    role_arn: str | None,
+    tag_scope: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Build an AWS session and collect inventory without any mutation APIs."""
     session = _build_session(profile, region, role_arn)
-    return AwsInventoryCollector(session.client("ec2", region_name=region), session.client("s3", region_name=region)).collect()
+    return AwsInventoryCollector(session.client("ec2", region_name=region), session.client("s3", region_name=region)).collect(tag_scope)
+
+
+def _ec2_tag_filters(tag_scope: dict[str, str]) -> dict[str, list[dict[str, list[str]]]]:
+    if not tag_scope:
+        return {}
+    return {"Filters": [{"Name": f"tag:{key}", "Values": [value]} for key, value in sorted(tag_scope.items())]}
+
+
+def _matches_tag_scope(tags: list[dict[str, str]], tag_scope: dict[str, str]) -> bool:
+    if not tag_scope:
+        return True
+    tag_map = {tag.get("Key"): tag.get("Value") for tag in tags}
+    return all(tag_map.get(key) == value for key, value in tag_scope.items())
 
 
 def _build_session(profile: str | None, region: str, role_arn: str | None) -> boto3.Session:

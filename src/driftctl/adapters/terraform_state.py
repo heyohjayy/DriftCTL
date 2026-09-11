@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from driftctl.models import CollectionDiagnostic, ResourceCategory, ResourceIdentity, ResourceSnapshot
+from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
 
 
 _SUPPORTED_RESOURCE_TYPES = frozenset({
@@ -136,8 +137,8 @@ def _security_group(
         category=ResourceCategory.NETWORKING,
         attributes={
             "vpc_id": values.get("vpc_id"),
-            "ingress": ingress,
-            "egress": egress,
+            "ingress": canonicalize_security_group_rules(ingress),
+            "egress": canonicalize_security_group_rules(egress),
             "tags": values.get("tags", {}),
         },
         source_address=resource.get("address"),
@@ -153,10 +154,10 @@ def _normalize_terraform_security_group_rule(values: dict[str, Any]) -> dict[str
         "from_port": values.get("from_port"),
         "to_port": values.get("to_port"),
         "protocol": values.get("ip_protocol", values.get("protocol")),
-        "cidr_blocks": sorted(values.get("cidr_blocks", []) + ([cidr_ipv4] if cidr_ipv4 else [])),
-        "ipv6_cidr_blocks": sorted(values.get("ipv6_cidr_blocks", []) + ([cidr_ipv6] if cidr_ipv6 else [])),
-        "prefix_list_ids": sorted(values.get("prefix_list_ids", []) + ([prefix_list_id] if prefix_list_id else [])),
-        "security_group_ids": sorted(values.get("security_groups", []) + ([referenced_group] if referenced_group else [])),
+        "cidr_blocks": sorted((values.get("cidr_blocks") or []) + ([cidr_ipv4] if cidr_ipv4 else [])),
+        "ipv6_cidr_blocks": sorted((values.get("ipv6_cidr_blocks") or []) + ([cidr_ipv6] if cidr_ipv6 else [])),
+        "prefix_list_ids": sorted((values.get("prefix_list_ids") or []) + ([prefix_list_id] if prefix_list_id else [])),
+        "security_group_ids": sorted((values.get("security_groups") or []) + ([referenced_group] if referenced_group else [])),
     }
 
 
