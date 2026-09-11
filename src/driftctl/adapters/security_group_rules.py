@@ -17,7 +17,9 @@ def canonicalize_security_group_rules(rules: Iterable[dict[str, Any]]) -> list[d
         }
     )
     for rule in rules:
-        key = (rule.get("from_port"), rule.get("to_port"), rule.get("protocol"))
+        protocol = rule.get("protocol")
+        from_port, to_port = _canonical_ports(protocol, rule.get("from_port"), rule.get("to_port"))
+        key = (from_port, to_port, protocol)
         normalized = grouped[key]
         for attribute in normalized:
             normalized[attribute].update(rule.get(attribute, []))
@@ -30,3 +32,10 @@ def canonicalize_security_group_rules(rules: Iterable[dict[str, Any]]) -> list[d
         }
         for (from_port, to_port, protocol), sources in sorted(grouped.items(), key=repr)
     ]
+
+
+def _canonical_ports(protocol: Any, from_port: Any, to_port: Any) -> tuple[Any, Any]:
+    """Treat Terraform and boto3 all-traffic port representations as equivalent."""
+    if protocol == "-1":
+        return None, None
+    return from_port, to_port

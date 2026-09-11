@@ -1,4 +1,5 @@
 from driftctl.adapters.boto3_snapshots import adapt_boto3_inventory
+from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
 from driftctl.adapters.terraform_state import adapt_terraform_state_with_diagnostics
 from driftctl.detector import detect_drift
 from driftctl.models import CollectionDiagnostic, ScanResult, Severity
@@ -135,6 +136,62 @@ def test_separate_ipv4_and_ipv6_egress_rules_match_one_combined_boto3_permission
 
     assert expected.snapshots[0].attributes["egress"] == live[0].attributes["egress"]
     assert detect_drift(expected.snapshots, live) == []
+
+
+def test_all_traffic_egress_normalizes_zero_and_null_ports() -> None:
+    expected_payload = _terraform_state()
+    resources = expected_payload["values"]["root_module"]["resources"]
+    resources.extend([
+        {
+            "address": "aws_vpc_security_group_egress_rule.web_all_ipv4",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_egress_rule",
+            "name": "web_all_ipv4",
+            "values": {
+                "security_group_id": "sg-0123",
+                "ip_protocol": "-1",
+                "from_port": 0,
+                "to_port": 0,
+                "cidr_ipv4": "0.0.0.0/0",
+            },
+        },
+        {
+            "address": "aws_vpc_security_group_egress_rule.web_all_ipv6",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_egress_rule",
+            "name": "web_all_ipv6",
+            "values": {
+                "security_group_id": "sg-0123",
+                "ip_protocol": "-1",
+                "from_port": None,
+                "to_port": None,
+                "cidr_ipv6": "::/0",
+            },
+        },
+    ])
+    live_payload = _live_security_group()
+    live_payload["SecurityGroups"][0]["IpPermissionsEgress"].append({
+        "IpProtocol": "-1",
+        "FromPort": None,
+        "ToPort": None,
+        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+        "Ipv6Ranges": [{"CidrIpv6": "::/0"}],
+    })
+
+    expected = adapt_terraform_state_with_diagnostics(expected_payload)
+    live = adapt_boto3_inventory(live_payload)
+
+    assert expected.snapshots[0].attributes["egress"] == live[0].attributes["egress"]
+    assert detect_drift(expected.snapshots, live) == []
+
+
+def test_tcp_port_zero_remains_distinct_from_null_ports() -> None:
+    rules = canonicalize_security_group_rules([
+        {"protocol": "tcp", "from_port": 0, "to_port": 0, "cidr_blocks": ["10.0.0.0/8"]},
+        {"protocol": "tcp", "from_port": None, "to_port": None, "cidr_blocks": ["10.0.0.0/8"]},
+    ])
+
+    assert len(rules) == 2
 
 
 def test_unsupported_managed_resource_is_reported_as_a_collection_diagnostic() -> None:
