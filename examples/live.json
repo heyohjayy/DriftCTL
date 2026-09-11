@@ -1,0 +1,36 @@
+{
+  "SecurityGroups": [
+    {
+      "GroupId": "sg-0web", "GroupName": "demo-web-sg", "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {"IpProtocol": "tcp", "FromPort": 443, "ToPort": 443, "IpRanges": [{"CidrIp": "10.0.0.0/8", "Description": "internal"}], "Ipv6Ranges": []},
+        {"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "emergency access"}], "Ipv6Ranges": []}
+      ],
+      "Tags": [{"Key": "Name", "Value": "demo-web-sg"}, {"Key": "ManagedBy", "Value": "Terraform"}]
+    },
+    {
+      "GroupId": "sg-0unmanaged", "GroupName": "unmanaged-admin-sg", "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [{"IpProtocol": "tcp", "FromPort": 3389, "ToPort": 3389, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": []}],
+      "Tags": [{"Key": "Owner", "Value": "unknown"}]
+    }
+  ],
+  "Buckets": [
+    {
+      "Name": "acme-build-artifacts", "CreationDate": "2026-09-01T10:00:00+00:00",
+      "PublicAccessBlockConfiguration": {"BlockPublicAcls": true, "IgnorePublicAcls": true, "BlockPublicPolicy": false, "RestrictPublicBuckets": true},
+      "BucketEncryption": {"Rules": []},
+      "Tags": [{"Key": "ManagedBy", "Value": "Terraform"}, {"Key": "DataClass", "Value": "internal"}]
+    },
+    {
+      "Name": "unmanaged-public-exports", "CreationDate": "2026-09-02T10:00:00+00:00",
+      "PublicAccessBlockConfiguration": {"BlockPublicAcls": false, "IgnorePublicAcls": false, "BlockPublicPolicy": false, "RestrictPublicBuckets": false},
+      "BucketEncryption": {"Rules": []}, "Tags": [{"Key": "Owner", "Value": "unknown"}]
+    }
+  ],
+  "Reservations": [
+    {"ReservationId": "r-01", "Instances": [
+      {"InstanceId": "i-0api", "ImageId": "ami-0example", "InstanceType": "t3.small", "SubnetId": "subnet-private-01", "PublicIpAddress": "198.51.100.10", "SecurityGroups": [{"GroupId": "sg-0web", "GroupName": "demo-web-sg"}], "Tags": [{"Key": "Name", "Value": "demo-api"}, {"Key": "ManagedBy", "Value": "Terraform"}]},
+      {"InstanceId": "i-0debug", "ImageId": "ami-0debug", "InstanceType": "t3.micro", "SubnetId": "subnet-public-01", "PublicIpAddress": "198.51.100.20", "SecurityGroups": [{"GroupId": "sg-0unmanaged", "GroupName": "unmanaged-admin-sg"}], "Tags": [{"Key": "Name", "Value": "debug-worker"}, {"Key": "Owner", "Value": "unknown"}]}
+    ]}
+  ]
+}

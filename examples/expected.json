@@ -1,0 +1,63 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.8",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.web",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "group_name": "demo-web-sg",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "ingress": [{"from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["10.0.0.0/8"], "ipv6_cidr_blocks": []}],
+            "tags": {"Name": "demo-web-sg", "ManagedBy": "Terraform"}
+          }
+        },
+        {
+          "address": "aws_s3_bucket.artifacts",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "artifacts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {"id": "acme-build-artifacts", "bucket": "acme-build-artifacts", "tags": {"ManagedBy": "Terraform", "DataClass": "internal"}}
+        },
+        {
+          "address": "aws_s3_bucket_public_access_block.artifacts",
+          "mode": "managed",
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "artifacts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {"bucket": "acme-build-artifacts", "block_public_acls": true, "ignore_public_acls": true, "block_public_policy": true, "restrict_public_buckets": true}
+        },
+        {
+          "address": "aws_s3_bucket_server_side_encryption_configuration.artifacts",
+          "mode": "managed",
+          "type": "aws_s3_bucket_server_side_encryption_configuration",
+          "name": "artifacts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {"bucket": "acme-build-artifacts", "rule": [{"apply_server_side_encryption_by_default": {"sse_algorithm": "AES256"}}]}
+        },
+        {
+          "address": "aws_s3_bucket.audit_archive",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "audit_archive",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {"id": "acme-audit-archive", "bucket": "acme-audit-archive", "tags": {"ManagedBy": "Terraform", "DataClass": "audit"}}
+        },
+        {
+          "address": "aws_instance.api",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {"id": "i-0api", "ami": "ami-0example", "instance_type": "t3.small", "subnet_id": "subnet-private-01", "associate_public_ip_address": false, "vpc_security_group_ids": ["sg-0web"], "tags": {"Name": "demo-api", "ManagedBy": "Terraform"}}
+        }
+      ]
+    }
+  }
+}
