@@ -65,6 +65,61 @@ class S3ProtectionRegressionRule:
         return None
 
 
+class UnexpectedPublicRouteRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.category is not ResourceCategory.NETWORKING or finding.identity.resource_type != "route_table":
+            return None
+        if finding.drift_type is DriftType.MODIFIED and "routes" not in finding.changes:
+            return None
+        snapshot = finding.live or finding.expected
+        if snapshot and any(route.get("target_type") == "internet_gateway" and (route.get("destination_ipv4") == "0.0.0.0/0" or route.get("destination_ipv6") == "::/0") for route in snapshot.attributes.get("routes", [])):
+            return SeverityDecision(Severity.SEVERE, "UnexpectedPublicRouteRule: a route table exposes a default IPv4 route through an internet gateway.", RemediationRecommendation("Confirm the public route is intentional before retaining it.", ("Review attached subnet associations.", "Restrict or remove the route in Terraform after approval.")))
+        return None
+
+
+class PermissiveNetworkAclRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.category is not ResourceCategory.NETWORKING or finding.identity.resource_type != "network_acl":
+            return None
+        if finding.drift_type is DriftType.MODIFIED and "entries" not in finding.changes:
+            return None
+        snapshot = finding.live or finding.expected
+        if snapshot and any(not entry.get("egress") and entry.get("action") == "allow" and (entry.get("cidr_block") == "0.0.0.0/0" or entry.get("ipv6_cidr_block") == "::/0") and entry.get("protocol") == "-1" for entry in snapshot.attributes.get("entries", [])):
+            return SeverityDecision(Severity.SEVERE, "PermissiveNetworkAclRule: inbound network ACL permits all traffic from 0.0.0.0/0.", RemediationRecommendation("Restrict the ACL entry to approved sources and protocols.", ("Confirm the entry is not a temporary exception.", "Reconcile the ACL through a reviewed Terraform change.")))
+        return None
+
+
+class IamAdministratorAccessRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.category is not ResourceCategory.IAM or finding.identity.resource_type != "iam_role":
+            return None
+        if finding.drift_type is DriftType.MODIFIED and not {"managed_policy_arns", "inline_policies"}.intersection(finding.changes):
+            return None
+        snapshot = finding.live or finding.expected
+        if snapshot and (_has_administrator_access(snapshot.attributes.get("managed_policy_arns", [])) or _has_broad_inline_policy(snapshot.attributes.get("inline_policies", []))):
+            return SeverityDecision(Severity.CRITICAL, "IamAdministratorAccessRule: role has AdministratorAccess or an equivalent broad inline policy.", RemediationRecommendation("Remove broad administrative access unless it is explicitly approved.", ("Validate the role's business purpose and owner.", "Replace broad permissions with least-privilege Terraform policy statements.")))
+        return None
+
+
+class RiskyTrustPolicyRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.category is not ResourceCategory.IAM or finding.identity.resource_type != "iam_role":
+            return None
+        if finding.drift_type is DriftType.MODIFIED and "trust_policy" not in finding.changes:
+            return None
+        snapshot = finding.live or finding.expected
+        if snapshot and _has_unrestricted_trust(snapshot.attributes.get("trust_policy", {})):
+            return SeverityDecision(Severity.SEVERE, "RiskyTrustPolicyRule: role trust policy permits unrestricted principal assumption.", RemediationRecommendation("Constrain the trust policy principal and conditions.", ("Identify intended assuming principals.", "Update the Terraform trust policy and review the resulting plan.")))
+        return None
+
+
+class DnsRecordChangeRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.drift_type is DriftType.MODIFIED and finding.identity.resource_type == "route53_record":
+            return SeverityDecision(Severity.MODERATE, "DnsRecordChangeRule: Route 53 record values differ from Terraform state.", RemediationRecommendation("Validate the DNS target before reconciliation.", ("Confirm the intended record owner and destination.", "Reconcile the record through a reviewed Terraform change.")))
+        return None
+
+
 class MissingResourceRule:
     def evaluate(self, finding: Finding) -> SeverityDecision | None:
         if finding.drift_type is DriftType.MISSING:
@@ -154,4 +209,27 @@ def _generic_remediation() -> RemediationRecommendation:
 
 
 def default_rules() -> list[SeverityRule]:
-    return [DangerousSecurityGroupIngressRule(), S3ProtectionRegressionRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
+    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
+
+
+def _has_administrator_access(policy_arns: list[str]) -> bool:
+    return any(arn.endswith(":policy/AdministratorAccess") for arn in policy_arns)
+
+
+def _has_broad_inline_policy(policies: list[dict]) -> bool:
+    for policy in policies:
+        document = policy.get("document", {})
+        for statement in document.get("Statement", []) if isinstance(document, dict) else []:
+            actions = statement.get("Action", []); resources = statement.get("Resource", [])
+            if statement.get("Effect") == "Allow" and (actions == "*" or "*" in actions) and (resources == "*" or "*" in resources): return True
+    return False
+
+
+def _has_unrestricted_trust(policy: object) -> bool:
+    if not isinstance(policy, dict): return False
+    for statement in policy.get("Statement", []):
+        actions = statement.get("Action", [])
+        principal = statement.get("Principal")
+        wildcard_principal = principal == "*" or isinstance(principal, dict) and any(value == "*" or isinstance(value, list) and "*" in value for value in principal.values())
+        if statement.get("Effect") == "Allow" and (actions == "sts:AssumeRole" or "sts:AssumeRole" in actions) and wildcard_principal: return True
+    return False
