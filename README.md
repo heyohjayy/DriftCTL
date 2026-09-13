@@ -14,8 +14,8 @@ The tool compares Terraform's recorded expected state with live AWS inventory, i
 | Reports and audit history | Produces a Markdown report grouped by resource category and severity, plus append-only JSONL audit events for each scan, finding, and recommendation. |
 | Read-only AWS access | Uses a dedicated least-privilege AWS policy and only `Describe`, `List`, and `Get` collection APIs. The scanner observes and reports; it does not apply remediation. |
 | Environment scoping | Supports repeatable `--tag KEY=VALUE` filters so a scan can focus on one environment without unrelated regional resources creating findings. |
-| Current AWS coverage | EC2 instances, security groups and their inline or standalone Terraform rules, plus S3 bucket public-access and encryption controls. Unsupported Terraform types are reported as collection diagnostics rather than misclassified as drift. |
-| Broader platform scope | The architecture is designed to extend coverage to VPCs, subnets, route tables, availability zones, load balancers, Lambda functions, Route 53, and IAM configuration. Each added service follows the same adapter, collector, comparison, severity, reporting, and validation pattern. |
+| Current AWS coverage | EC2 instances, security groups and their inline or standalone Terraform rules, S3 bucket public-access and encryption controls, VPCs, subnets, internet gateways, route tables, network ACLs, IAM roles and instance profiles, plus Route 53 hosted zones and records. Unsupported Terraform types are reported as collection diagnostics rather than misclassified as drift. |
+| Extension model | Each additional AWS service follows the same adapter, collector, comparison, severity, reporting, and validation pattern. This keeps later coverage additions consistent with the existing read-only drift workflow. |
 | Team operation | The intended operational model supports direct CLI use and a dedicated Jenkins monitoring pipeline for scheduled and manual scans, report and audit retention, and critical-drift notifications. GitHub Actions can also serve as an additional runner. |
 
 ## Quick Start
@@ -65,6 +65,26 @@ driftctl scan `
   --report reports\live-baseline-report.md `
   --audit audit\live-baseline-events.jsonl
 ```
+
+### Reuse a Scan Configuration
+
+The full command is useful because it shows every setting DriftCTL needs. If you scan the same Terraform environment regularly, you can save those settings in one small local file named `driftctl.toml`. This saves you from typing the same long command every time.
+
+Put `driftctl.toml` in the top folder of the Terraform project it describes. The file stores the Terraform folder, AWS CLI profile name, AWS region, tag scope, and report and audit locations. It does not store credentials. Start from [the configuration example](examples/driftctl.toml.example).
+
+After activating the Python environment, move into the Terraform project. When `driftctl.toml` is in that folder, run:
+
+```powershell
+driftctl scan
+```
+
+You can also run the same scan from any directory by giving the configuration file path:
+
+```powershell
+driftctl scan --config C:\path\to\your\terraform-project\driftctl.toml
+```
+
+Paths inside `driftctl.toml` are based on the location of the configuration file, not the folder currently open in the terminal. You can still add command options when needed. For example, `--report` replaces the report path saved in the file for one scan. Never put AWS access keys, secret access keys, session tokens, passwords, or other credentials in this file.
 
 `--expected` and `--terraform-dir` are mutually exclusive. Supplying `--live` keeps the scan offline; omitting it enables AWS collection and requires an explicit `--region`.
 
