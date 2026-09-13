@@ -19,6 +19,8 @@ def test_collects_boto3_shaped_inventory_with_read_only_calls() -> None:
     s3_stubber = Stubber(s3)
     ec2_stubber.add_response("describe_security_groups", {"SecurityGroups": [{"GroupId": "sg-0123", "GroupName": "web", "VpcId": "vpc-0123", "IpPermissions": []}]})
     ec2_stubber.add_response("describe_instances", {"Reservations": [{"ReservationId": "r-0123", "Instances": [{"InstanceId": "i-0123", "ImageId": "ami-0123", "InstanceType": "t3.micro", "SubnetId": "subnet-0123", "SecurityGroups": [], "Tags": [{"Key": "Name", "Value": "api"}]}]}]})
+    for operation, key in [("describe_vpcs", "Vpcs"), ("describe_subnets", "Subnets"), ("describe_internet_gateways", "InternetGateways"), ("describe_route_tables", "RouteTables"), ("describe_network_acls", "NetworkAcls")]:
+        ec2_stubber.add_response(operation, {key: []})
     s3_stubber.add_response("list_buckets", {"Buckets": [{"Name": "example-bucket", "CreationDate": datetime(2026, 1, 1, tzinfo=timezone.utc)}]})
     s3_stubber.add_response("get_public_access_block", {"PublicAccessBlockConfiguration": {"BlockPublicAcls": True, "IgnorePublicAcls": True, "BlockPublicPolicy": True, "RestrictPublicBuckets": True}}, {"Bucket": "example-bucket"})
     s3_stubber.add_response("get_bucket_encryption", {"ServerSideEncryptionConfiguration": {"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}}, {"Bucket": "example-bucket"})
@@ -46,6 +48,8 @@ def test_tag_scope_is_sent_to_ec2_collection_calls() -> None:
     filters = {"Filters": [{"Name": "tag:Project", "Values": ["Test"]}]}
     ec2_stubber.add_response("describe_security_groups", {"SecurityGroups": [{"GroupId": "sg-scoped", "GroupName": "scoped", "VpcId": "vpc-0123", "IpPermissions": [], "Tags": [{"Key": "Project", "Value": "Test"}]}]}, filters)
     ec2_stubber.add_response("describe_instances", {"Reservations": [{"ReservationId": "r-scoped", "Instances": [{"InstanceId": "i-scoped", "ImageId": "ami-0123", "InstanceType": "t3.micro", "SubnetId": "subnet-0123", "SecurityGroups": [], "Tags": [{"Key": "Project", "Value": "Test"}]}]}]}, filters)
+    for operation, key in [("describe_vpcs", "Vpcs"), ("describe_subnets", "Subnets"), ("describe_internet_gateways", "InternetGateways"), ("describe_route_tables", "RouteTables"), ("describe_network_acls", "NetworkAcls")]:
+        ec2_stubber.add_response(operation, {key: []}, filters)
     s3_stubber.add_response("list_buckets", {"Buckets": []})
 
     with ec2_stubber, s3_stubber:
