@@ -53,13 +53,13 @@ def _route_table(x: dict[str, Any]) -> ResourceSnapshot:
     for route in x.get("Routes", []):
         if route.get("GatewayId") == "local" or route.get("Origin") == "CreateRouteTable": continue
         target_key = next((key for key in ("GatewayId", "NatGatewayId", "TransitGatewayId", "VpcPeeringConnectionId", "NetworkInterfaceId", "InstanceId") if route.get(key)), None); target = route.get(target_key) if target_key else None
-        routes.append({"destination_ipv4": route.get("DestinationCidrBlock"), "destination_ipv6": route.get("DestinationIpv6CidrBlock"), "target": target, "target_type": "internet_gateway" if target_key == "GatewayId" and str(target).startswith("igw-") else None})
+        routes.append({"destination_ipv4": _none_if_blank(route.get("DestinationCidrBlock")), "destination_ipv6": _none_if_blank(route.get("DestinationIpv6CidrBlock")), "target": target, "target_type": "internet_gateway" if target_key == "GatewayId" and str(target).startswith("igw-") else None})
     associations = [{"subnet_id": a.get("SubnetId")} for a in x.get("Associations", []) if a.get("SubnetId")]
     return ResourceSnapshot(ResourceIdentity("aws", "route_table", _name(tags, x["RouteTableId"])), ResourceCategory.NETWORKING, {"vpc_id": x.get("VpcId"), "routes": sorted(routes, key=repr), "associations": sorted(associations, key=repr), "tags": tags})
 
 
 def _nacl(x: dict[str, Any]) -> ResourceSnapshot:
-    tags = _tags(x.get("Tags", [])); entries = [{"egress": bool(e.get("Egress")), "rule_number": e.get("RuleNumber"), "protocol": str(e.get("Protocol")), "action": e.get("RuleAction"), "cidr_block": e.get("CidrBlock"), "ipv6_cidr_block": e.get("Ipv6CidrBlock")} for e in x.get("Entries", [])]; associations = [{"subnet_id": a.get("SubnetId")} for a in x.get("Associations", [])]
+    tags = _tags(x.get("Tags", [])); entries = [{"egress": bool(e.get("Egress")), "rule_number": e.get("RuleNumber"), "protocol": str(e.get("Protocol")), "action": e.get("RuleAction"), "cidr_block": _none_if_blank(e.get("CidrBlock")), "ipv6_cidr_block": _none_if_blank(e.get("Ipv6CidrBlock"))} for e in x.get("Entries", []) if not _is_default_nacl_entry(e)]; associations = [{"subnet_id": a.get("SubnetId")} for a in x.get("Associations", [])]
     return ResourceSnapshot(ResourceIdentity("aws", "network_acl", _name(tags, x["NetworkAclId"])), ResourceCategory.NETWORKING, {"vpc_id": x.get("VpcId"), "entries": sorted(entries, key=repr), "associations": sorted(associations, key=repr), "tags": tags})
 
 
@@ -74,3 +74,11 @@ def _policy(value: Any) -> Any:
         try: return json.loads(value)
         except json.JSONDecodeError: return value
     return value or {}
+
+
+def _is_default_nacl_entry(entry: dict[str, Any]) -> bool:
+    return entry.get("RuleNumber") == 32767 and entry.get("RuleAction") == "deny"
+
+
+def _none_if_blank(value: Any) -> Any:
+    return None if value in (None, "") else value

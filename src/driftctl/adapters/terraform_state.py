@@ -115,18 +115,18 @@ def _route_table(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> Res
     routes = [_route(x) for x in v.get("route", [])] + c.get("routes", []); routes = [route for route in routes if route.get("target") != "local"]; return _network(r, v, "route_table", {"vpc_id": v.get("vpc_id"), "routes": sorted(routes, key=repr), "associations": sorted(c.get("associations", []), key=repr), "tags": v.get("tags", {})})
 
 def _route(v: dict[str, Any]) -> dict[str, Any]:
-    target = next((v.get(k) for k in ("gateway_id", "nat_gateway_id", "transit_gateway_id", "vpc_peering_connection_id", "network_interface_id", "instance_id") if v.get(k)), None); return {"destination_ipv4": v.get("destination_cidr_block") or v.get("cidr_block"), "destination_ipv6": v.get("destination_ipv6_cidr_block"), "target": target, "target_type": "internet_gateway" if target and str(target).startswith("igw-") else None}
+    target = next((v.get(k) for k in ("gateway_id", "nat_gateway_id", "transit_gateway_id", "vpc_peering_connection_id", "network_interface_id", "instance_id") if v.get(k)), None); return {"destination_ipv4": _none_if_blank(v.get("destination_cidr_block") or v.get("cidr_block")), "destination_ipv6": _none_if_blank(v.get("destination_ipv6_cidr_block")), "target": target, "target_type": "internet_gateway" if target and str(target).startswith("igw-") else None}
 
 def _nacl(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot:
     entries = [_acl_entry(x) for x in v.get("ingress", [])] + [_acl_entry({**x, "egress": True}) for x in v.get("egress", [])] + c.get("entries", []); return _network(r, v, "network_acl", {"vpc_id": v.get("vpc_id"), "entries": sorted(entries, key=repr), "associations": sorted(c.get("associations", []), key=repr), "tags": v.get("tags", {})})
 
-def _acl_entry(v: dict[str, Any]) -> dict[str, Any]: return {"egress": bool(v.get("egress")), "rule_number": v.get("rule_no", v.get("rule_number")), "protocol": str(v.get("protocol")), "action": v.get("rule_action", v.get("action")), "cidr_block": v.get("cidr_block"), "ipv6_cidr_block": v.get("ipv6_cidr_block")}
+def _acl_entry(v: dict[str, Any]) -> dict[str, Any]: return {"egress": bool(v.get("egress")), "rule_number": v.get("rule_no", v.get("rule_number")), "protocol": str(v.get("protocol")), "action": v.get("rule_action", v.get("action")), "cidr_block": _none_if_blank(v.get("cidr_block")), "ipv6_cidr_block": _none_if_blank(v.get("ipv6_cidr_block"))}
 
 def _role(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot:
     inline = [{"name": x.get("name"), "document": _json(x.get("policy"))} for x in v.get("inline_policy", [])] + c.get("inline", []); return ResourceSnapshot(ResourceIdentity("aws", "iam_role", v.get("name") or r["name"]), ResourceCategory.IAM, {"trust_policy": _json(v.get("assume_role_policy")), "managed_policy_arns": sorted(set((v.get("managed_policy_arns") or []) + [x for x in c.get("managed", []) if x])), "inline_policies": sorted(inline, key=repr), "tags": v.get("tags", {})}, r.get("address"))
 
 def _profile(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "iam_instance_profile", v.get("name") or r["name"]), ResourceCategory.IAM, {"roles": sorted([v["role"]] if v.get("role") else v.get("roles", [])), "tags": v.get("tags", {})}, r.get("address"))
-def _zone(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "route53_hosted_zone", _zone_name(v)), ResourceCategory.OTHER, {"private_zone": bool(v.get("private_zone")), "tags": v.get("tags", {})}, r.get("address"))
+def _zone(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "route53_hosted_zone", _zone_name(v)), ResourceCategory.OTHER, {"private_zone": bool(v.get("private_zone")) or bool(v.get("vpc")), "tags": v.get("tags", {})}, r.get("address"))
 def _record(r: dict[str, Any], v: dict[str, Any], zone: str, tags: dict[str, str]) -> ResourceSnapshot:
     name, typ = str(v.get("name", "")).rstrip("."), v.get("type"); return ResourceSnapshot(ResourceIdentity("aws", "route53_record", f"{zone}|{name}|{typ}"), ResourceCategory.OTHER, {"zone": zone, "name": name, "type": typ, "ttl": v.get("ttl"), "records": sorted(v.get("records", [])), "alias": v.get("alias") or [], "tags": tags}, r.get("address"))
 def _zone_name(v: dict[str, Any]) -> str: return str(v.get("name") or v.get("id") or "").rstrip(".")
@@ -135,5 +135,6 @@ def _json(value: Any) -> Any:
         try: return json.loads(value)
         except json.JSONDecodeError: return value
     return value or {}
+def _none_if_blank(value: Any) -> Any: return None if value in (None, "") else value
 def _s3(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "s3_bucket", v.get("bucket") or r["name"]), ResourceCategory.STORAGE, {"bucket": v.get("bucket") or v.get("id"), "tags": v.get("tags", {}), "public_access_block": c.get("public_access_block", {}), "encryption": c.get("encryption", {})}, r.get("address"))
 def _instance(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "instance", v.get("tags", {}).get("Name") or v.get("id") or r["name"]), ResourceCategory.COMPUTE, {"instance_type": v.get("instance_type"), "ami": v.get("ami"), "subnet_id": v.get("subnet_id"), "associate_public_ip_address": bool(v.get("associate_public_ip_address")), "security_group_ids": sorted(v.get("vpc_security_group_ids", [])), "tags": v.get("tags", {})}, r.get("address"))
