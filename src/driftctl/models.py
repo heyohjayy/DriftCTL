@@ -83,3 +83,4 @@ class ScanResult:
     live_count: int
     findings: tuple[Finding, ...]
     diagnostics: tuple[CollectionDiagnostic, ...] = ()
+    tag_scope: str = "None"

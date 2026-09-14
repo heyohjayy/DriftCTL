@@ -16,7 +16,7 @@ from driftctl.collectors.aws import AwsCollectionError, collect_live_inventory
 from driftctl.detector import detect_drift
 from driftctl.loaders.terraform_cli import TerraformStateLoadError, load_terraform_state
 from driftctl.models import CollectionDiagnostic, ScanResult
-from driftctl.reporting import render_markdown
+from driftctl.reporting import render_markdown, render_terminal
 from driftctl.scan_config import ScanConfig, ScanConfigError, load_scan_config
 from driftctl.scoping import filter_snapshots_by_tag_scope, format_tag_scope, parse_tag_scope
 from driftctl.severity_rules import classify_finding, default_rules
@@ -68,12 +68,14 @@ def scan(
             len(live_snapshots),
             tuple(findings),
             expected_adaptation.diagnostics + _live_collection_diagnostics(live_payload) + _scope_diagnostics(tag_scope),
+            format_tag_scope(tag_scope) if tag_scope else "None",
         )
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(render_markdown(result), encoding="utf-8")
         event_count = write_audit_log(audit, result)
     except (AwsCollectionError, OSError, ScanConfigError, TerraformStateLoadError, ValueError, KeyError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
+    render_terminal(result)
     typer.echo(f"Scan complete: {len(findings)} finding(s); report: {report}; audit events appended: {event_count}")
 
 
