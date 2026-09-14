@@ -89,3 +89,157 @@ def test_in_scope_unmanaged_route53_record_is_detected() -> None:
     live = ResourceSnapshot(ResourceIdentity("aws", "route53_record", "zone|api.zone|A"), ResourceCategory.OTHER, {"tags": {"Project": "Test"}})
     findings = detect_drift([], [live])
     assert [(item.drift_type, item.identity.resource_type) for item in findings] == [(DriftType.UNMANAGED, "route53_record")]
+
+
+def _private_zone_state(*, include_apex_soa: bool = False) -> dict:
+    resources = [
+        {
+            "address": "aws_route53_zone.private",
+            "mode": "managed",
+            "type": "aws_route53_zone",
+            "name": "private",
+            "values": {
+                "id": "ZPRIVATE",
+                "name": "internal.test.",
+                "private_zone": True,
+                "tags": {"Project": "Test"},
+            },
+        },
+        {
+            "address": "aws_route53_record.app",
+            "mode": "managed",
+            "type": "aws_route53_record",
+            "name": "app",
+            "values": {
+                "zone_id": "ZPRIVATE",
+                "name": "app.internal.test.",
+                "type": "A",
+                "ttl": 60,
+                "records": ["10.0.1.10"],
+            },
+        },
+    ]
+    if include_apex_soa:
+        resources.append(
+            {
+                "address": "aws_route53_record.apex_soa",
+                "mode": "managed",
+                "type": "aws_route53_record",
+                "name": "apex_soa",
+                "values": {
+                    "zone_id": "ZPRIVATE",
+                    "name": "internal.test.",
+                    "type": "SOA",
+                    "ttl": 900,
+                    "records": [
+                        "ns-1.awsdns.test. hostmaster.awsdns.test. "
+                        "1 7200 900 1209600 86400"
+                    ],
+                },
+            }
+        )
+    return {"values": {"root_module": {"resources": resources}}}
+
+
+def _private_zone_live() -> dict:
+    return {
+        "HostedZones": [
+            {
+                "Id": "/hostedzone/ZPRIVATE",
+                "Name": "internal.test.",
+                "Config": {"PrivateZone": True},
+                "Tags": [{"Key": "Project", "Value": "Test"}],
+            }
+        ],
+        "RecordSets": {
+            "/hostedzone/ZPRIVATE": [
+                {
+                    "Name": "internal.test.",
+                    "Type": "SOA",
+                    "TTL": 900,
+                    "ResourceRecords": [
+                        {
+                            "Value": "ns-1.awsdns.test. hostmaster.awsdns.test. "
+                            "1 7200 900 1209600 86400"
+                        }
+                    ],
+                },
+                {
+                    "Name": "internal.test.",
+                    "Type": "NS",
+                    "TTL": 172800,
+                    "ResourceRecords": [
+                        {"Value": "ns-1.awsdns.test."},
+                        {"Value": "ns-2.awsdns.test."},
+                    ],
+                },
+                {
+                    "Name": "app.internal.test.",
+                    "Type": "A",
+                    "TTL": 60,
+                    "ResourceRecords": [{"Value": "10.0.1.10"}],
+                },
+            ]
+        },
+    }
+
+
+def test_route53_default_apex_records_do_not_create_unmanaged_drift() -> None:
+    expected = adapt_terraform_state_with_diagnostics(_private_zone_state()).snapshots
+    live = adapt_boto3_inventory(_private_zone_live())
+
+    assert detect_drift(expected, live) == []
+
+
+def test_route53_managed_a_record_change_remains_modified_drift() -> None:
+    payload = _private_zone_live()
+    payload["RecordSets"]["/hostedzone/ZPRIVATE"][2]["ResourceRecords"] = [
+        {"Value": "10.0.1.99"}
+    ]
+    expected = adapt_terraform_state_with_diagnostics(_private_zone_state()).snapshots
+
+    findings = detect_drift(expected, adapt_boto3_inventory(payload))
+
+    assert len(findings) == 1
+    assert findings[0].drift_type is DriftType.MODIFIED
+    assert findings[0].identity.name == "internal.test|app.internal.test|A"
+
+
+def test_explicit_apex_system_record_uses_normal_comparison() -> None:
+    payload = _private_zone_live()
+    expected = adapt_terraform_state_with_diagnostics(
+        _private_zone_state(include_apex_soa=True)
+    ).snapshots
+
+    assert detect_drift(expected, adapt_boto3_inventory(payload)) == []
+
+    payload["RecordSets"]["/hostedzone/ZPRIVATE"][0]["ResourceRecords"] = [
+        {
+            "Value": "ns-1.awsdns.test. hostmaster.awsdns.test. "
+            "2 7200 900 1209600 86400"
+        }
+    ]
+    findings = detect_drift(expected, adapt_boto3_inventory(payload))
+
+    assert len(findings) == 1
+    assert findings[0].drift_type is DriftType.MODIFIED
+    assert findings[0].identity.name == "internal.test|internal.test|SOA"
+
+
+def test_non_apex_system_record_is_not_ignored() -> None:
+    payload = _private_zone_live()
+    payload["RecordSets"]["/hostedzone/ZPRIVATE"].append(
+        {
+            "Name": "delegated.internal.test.",
+            "Type": "NS",
+            "TTL": 300,
+            "ResourceRecords": [{"Value": "ns-3.awsdns.test."}],
+        }
+    )
+    expected = adapt_terraform_state_with_diagnostics(_private_zone_state()).snapshots
+
+    findings = detect_drift(expected, adapt_boto3_inventory(payload))
+
+    assert len(findings) == 1
+    assert findings[0].drift_type is DriftType.UNMANAGED
+    assert findings[0].identity.name == "internal.test|delegated.internal.test|NS"
