@@ -68,7 +68,7 @@ def _role(x: dict[str, Any]) -> ResourceSnapshot:
 def _profile(x: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "iam_instance_profile", x["InstanceProfileName"]), ResourceCategory.IAM, {"roles": sorted(r["RoleName"] for r in x.get("Roles", [])), "tags": _tags(x.get("Tags", []))})
 def _zone(x: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "route53_hosted_zone", x.get("Name", "").rstrip(".")), ResourceCategory.OTHER, {"private_zone": bool(x.get("Config", {}).get("PrivateZone")), "tags": _tags(x.get("Tags", []))})
 def _record(x: dict[str, Any], zone: str, tags: dict[str, str]) -> ResourceSnapshot:
-    name, typ = x.get("Name", "").rstrip("."), x.get("Type"); alias = x.get("AliasTarget") or {}; return ResourceSnapshot(ResourceIdentity("aws", "route53_record", f"{zone}|{name}|{typ}"), ResourceCategory.OTHER, {"zone": zone, "name": name, "type": typ, "ttl": x.get("TTL"), "records": sorted(v["Value"] for v in x.get("ResourceRecords", []) if "Value" in v), "alias": [alias] if alias else [], "tags": tags})
+    name, typ = x.get("Name", "").rstrip("."), x.get("Type"); alias = x.get("AliasTarget") or {}; return ResourceSnapshot(ResourceIdentity("aws", "route53_record", f"{zone}|{name}|{typ}"), ResourceCategory.OTHER, {"zone": zone, "name": name, "type": typ, "ttl": x.get("TTL"), "records": sorted(v["Value"] for v in x.get("ResourceRecords", []) if "Value" in v), "alias": [alias] if alias else [], "tags": tags}, provider_managed=name == zone and typ in {"SOA", "NS"})
 def _policy(value: Any) -> Any:
     if isinstance(value, str):
         try: return json.loads(value)

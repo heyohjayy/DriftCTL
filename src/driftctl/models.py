@@ -46,6 +46,7 @@ class ResourceSnapshot:
     category: ResourceCategory
     attributes: dict[str, Any]
     source_address: str | None = None
+    provider_managed: bool = False
 
 
 @dataclass(frozen=True)

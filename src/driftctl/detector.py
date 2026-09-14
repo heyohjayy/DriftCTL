@@ -17,6 +17,8 @@ def detect_drift(expected: Iterable[ResourceSnapshot], live: Iterable[ResourceSn
         findings.append(Finding(DriftType.MISSING, snapshot.identity, snapshot.category, expected=snapshot))
     for key in sorted(live_by_key.keys() - expected_by_key.keys()):
         snapshot = live_by_key[key]
+        if snapshot.provider_managed:
+            continue
         findings.append(Finding(DriftType.UNMANAGED, snapshot.identity, snapshot.category, live=snapshot))
     for key in sorted(expected_by_key.keys() & live_by_key.keys()):
         changes = diff_attributes(expected_by_key[key].attributes, live_by_key[key].attributes)
