@@ -208,9 +208,20 @@ Run `terraform apply` only after you understand and approve the plan. Terraform 
 
 ### Configure Read-Only AWS Access
 
-DriftCTL needs permission to look at AWS resources, but it does not need permission to create, update, or delete them. Use the least-privilege policy at `infra/iam/driftctl-read-only-policy.json` to create a dedicated read-only IAM user or role.
+DriftCTL needs permission to look at AWS resources, but it does not need permission to create, update, or delete them. The repository includes a policy at `infra/iam/driftctl-read-only-policy.json`. This policy lists only the AWS read actions DriftCTL needs for its supported services.
 
-Configure its credentials as a local AWS CLI profile. The AWS CLI asks for the credentials privately in the terminal:
+For a personal learning or sandbox account, the simplest option is to create a dedicated IAM user used only by DriftCTL. Do not use your AWS root user.
+
+1. In the DriftCTL repository, open `infra/iam/driftctl-read-only-policy.json` and copy its full contents.
+2. In the AWS Console, open **IAM**. Select **Policies**, then **Create policy**, then the **JSON** tab.
+3. Replace the example policy with the copied contents. Continue to the review page, give the policy a clear name such as `InfrastructureDriftControlReadOnly`, and create it.
+4. In IAM, select **Users** and create a user such as `driftctl-readonly`. This user is for AWS CLI access; it does not need permission to create or change infrastructure.
+5. During the permissions step, attach the `InfrastructureDriftControlReadOnly` policy you just created.
+6. Open the new user's **Security credentials** tab. Under **Access keys**, create an access key for **Command Line Interface (CLI)** use. AWS shows the secret access key only once.
+
+If your organisation already uses an IAM role or AWS IAM Identity Center, attach the same policy to the approved role instead. Configure the AWS CLI profile using your organisation's sign-in process. Do not create both an IAM user and a role for the same scan unless your organisation requires it.
+
+After creating the access key, configure its credentials as a local AWS CLI profile. Run this command in PowerShell and enter the access key ID, secret access key, default region, and output format when prompted:
 
 ```powershell
 aws configure --profile driftctl-readonly
@@ -237,7 +248,8 @@ The command below is the clearest way to see every value DriftCTL needs. Replace
 driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\aws-drift-report.md --audit audit\events.jsonl
 ```
 
-DriftCTL uses `terraform show -json` to read the applied Terraform state. It does not run `terraform init`, `terraform plan`, `terraform apply`, or `terraform refresh`.
+> [!NOTE]
+> DriftCTL uses `terraform show -json` to read the applied Terraform state. It does not run `terraform init`, `terraform plan`, `terraform apply`, or `terraform refresh`.
 
 Your first live scan is your **baseline scan**. Right after Terraform applies your infrastructure, the report should normally show no unexpected drift. If it shows a collection diagnostic, read the message before continuing. A collection problem is not the same as a clean scan.
 
