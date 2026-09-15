@@ -17,5 +17,11 @@ This directory holds the sanitized evidence screenshots used in the project READ
 - `09-iam-policy-drift.png`
 - `10-route53-record-drift.png`
 - `11-clean-after-remediation.png`
+- `12-sprint3b-readonly-access-verification.png`: dedicated collector profile reads NAT, Application Load Balancer, and RDS resources.
+- `13-sprint3b-clean-live-baseline.png`: clean live baseline after application infrastructure is applied.
+- `14-sprint3b-target-group-drift.png`: target-group health-check drift detected as moderate.
+- `15-sprint3b-rds-deletion-protection-drift.png`: weakened RDS deletion protection detected as severe.
+- `16-sprint3b-private-route-drift.png`: private default route redirected from NAT to internet gateway and detected as severe.
+- `17-sprint3b-clean-after-remediation.png`: final clean scan after application-infrastructure remediation.
 
-These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, a clean live baseline, controlled drift across networking, IAM, and Route 53, and a successful final remediation scan.
+These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, and RDS, plus successful final remediation scans.
