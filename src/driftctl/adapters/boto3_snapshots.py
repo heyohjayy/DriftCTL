@@ -19,7 +19,7 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     snapshots += [_nacl(x) for x in payload.get("NetworkAcls", [])]
     for reservation in payload.get("Reservations", []): snapshots += [_instance(x) for x in reservation.get("Instances", [])]
     subnets = {x.get("SubnetId"): x.get("VpcId") for x in payload.get("Subnets", [])}
-    snapshots += [_nat_gateway(x, subnets) for x in payload.get("NatGateways", [])]
+    snapshots += [_nat_gateway(x, subnets) for x in payload.get("NatGateways", []) if x.get("State") != "deleted"]
     raw_load_balancers = [x for x in payload.get("LoadBalancers", []) if x.get("Type", "application") == "application"]
     load_balancers = [_load_balancer(x) for x in raw_load_balancers]; snapshots += load_balancers
     load_balancer_names = {x.get("LoadBalancerArn"): _resource_name(x, "LoadBalancerName") for x in raw_load_balancers}
