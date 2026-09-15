@@ -199,9 +199,9 @@ def test_unsupported_managed_resource_is_reported_as_a_collection_diagnostic() -
         "values": {
             "root_module": {
                 "resources": [{
-                    "address": "aws_db_instance.legacy",
+                    "address": "aws_key_pair.legacy",
                     "mode": "managed",
-                    "type": "aws_db_instance",
+                    "type": "aws_key_pair",
                     "name": "legacy",
                     "values": {"id": "database-1"},
                 }]
@@ -213,10 +213,10 @@ def test_unsupported_managed_resource_is_reported_as_a_collection_diagnostic() -
     assert adaptation.diagnostics == (
         CollectionDiagnostic(
             source="terraform_state",
-            resource_address="aws_db_instance.legacy",
-            message="Skipped unsupported Terraform resource type: aws_db_instance.",
+            resource_address="aws_key_pair.legacy",
+            message="Skipped unsupported Terraform resource type: aws_key_pair.",
         ),
     )
     report = render_markdown(ScanResult("scan-1", "2026-09-11T00:00:00+00:00", 0, 0, (), adaptation.diagnostics))
     assert "## Collection Diagnostics" in report
-    assert "Skipped unsupported Terraform resource type: aws_db_instance." in report
+    assert "Skipped unsupported Terraform resource type: aws_key_pair." in report

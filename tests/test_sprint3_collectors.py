@@ -11,7 +11,7 @@ def test_network_collection_uses_taggable_ec2_read_apis() -> None:
     ec2, s3 = session.client("ec2"), session.client("s3")
     ec2_stub, s3_stub = Stubber(ec2), Stubber(s3)
     filters = {"Filters": [{"Name": "tag:Project", "Values": ["Test"]}]}
-    for operation, key in [("describe_security_groups", "SecurityGroups"), ("describe_instances", "Reservations"), ("describe_vpcs", "Vpcs"), ("describe_subnets", "Subnets"), ("describe_internet_gateways", "InternetGateways"), ("describe_route_tables", "RouteTables"), ("describe_network_acls", "NetworkAcls")]: ec2_stub.add_response(operation, {key: []}, filters)
+    for operation, key in [("describe_security_groups", "SecurityGroups"), ("describe_instances", "Reservations"), ("describe_vpcs", "Vpcs"), ("describe_subnets", "Subnets"), ("describe_internet_gateways", "InternetGateways"), ("describe_route_tables", "RouteTables"), ("describe_network_acls", "NetworkAcls"), ("describe_nat_gateways", "NatGateways")]: ec2_stub.add_response(operation, {key: []}, filters)
     s3_stub.add_response("list_buckets", {"Buckets": []})
     with ec2_stub, s3_stub: inventory = AwsInventoryCollector(ec2, s3).collect({"Project": "Test"})
     assert inventory["Vpcs"] == [] and inventory["NetworkAcls"] == []
@@ -25,7 +25,7 @@ def test_iam_and_route53_collectors_are_injectable_read_only_families() -> None:
     iam_stub.add_response("list_instance_profiles", {"InstanceProfiles": []})
     r53_stub.add_response("list_hosted_zones", {"HostedZones": [], "Marker": "marker", "MaxItems": "100", "IsTruncated": False})
     ec2, s3 = session.client("ec2"), session.client("s3"); ec2_stub, s3_stub = Stubber(ec2), Stubber(s3)
-    for operation, key in [("describe_security_groups", "SecurityGroups"), ("describe_instances", "Reservations"), ("describe_vpcs", "Vpcs"), ("describe_subnets", "Subnets"), ("describe_internet_gateways", "InternetGateways"), ("describe_route_tables", "RouteTables"), ("describe_network_acls", "NetworkAcls")]: ec2_stub.add_response(operation, {key: []})
+    for operation, key in [("describe_security_groups", "SecurityGroups"), ("describe_instances", "Reservations"), ("describe_vpcs", "Vpcs"), ("describe_subnets", "Subnets"), ("describe_internet_gateways", "InternetGateways"), ("describe_route_tables", "RouteTables"), ("describe_network_acls", "NetworkAcls"), ("describe_nat_gateways", "NatGateways")]: ec2_stub.add_response(operation, {key: []})
     s3_stub.add_response("list_buckets", {"Buckets": []})
     with ec2_stub, s3_stub, iam_stub, r53_stub:
         inventory = AwsInventoryCollector(ec2, s3, iam, route53).collect()
