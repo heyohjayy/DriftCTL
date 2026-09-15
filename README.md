@@ -1,4 +1,4 @@
-# DriftCTL
+# Infrastructure Drift Control Platform (DriftCTL)
 
 `driftctl` is a read-only Terraform drift-detection and remediation-planning tool for AWS. It helps teams identify and safely resolve Terraform state drift: the common situation where a Terraform-managed environment no longer matches the configuration that exists in AWS.
 
