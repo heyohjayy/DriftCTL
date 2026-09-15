@@ -13,7 +13,8 @@ DriftCTL is read-only. It reads Terraform state and AWS configuration, compares 
 2. Run automated checks to confirm the tool works on your computer.
 3. Run a safe example scan using files included in this repository.
 4. Set up read-only AWS access and scan a Terraform-managed test environment.
-5. Make controlled, temporary changes to see how DriftCTL reports different kinds of real drift.
+5. Check application-facing infrastructure such as NAT gateways, Application Load Balancers, and RDS DB instances.
+6. Make controlled, temporary changes to see how DriftCTL reports different kinds of real drift.
 
 ## Before You Start
 
@@ -176,7 +177,10 @@ Use a dedicated AWS sandbox account when possible. If you use one personal accou
 
 Create a separate Terraform project for the AWS resources you want to scan. Keep this Terraform project outside the DriftCTL repository because it is the environment being inspected, while DriftCTL is the reusable tool doing the inspection.
 
-For the full live validation shown later in this guide, the Terraform project includes an EC2 instance, security groups, a VPC, public and private subnets, an internet gateway, route tables, a private network ACL, an IAM role with an instance profile, a private Route 53 hosted zone, and an A record. Start with only the services that make sense for your own learning or non-production environment.
+For the full live validation shown later in this guide, the Terraform project includes an EC2 instance, security groups, a VPC, public and private subnets, an internet gateway, a NAT gateway, route tables, a private network ACL, an IAM role with an instance profile, an internal Application Load Balancer with a target group and listener, an RDS DB instance, a private Route 53 hosted zone, and an A record. Start with only the services that make sense for your own learning or non-production environment.
+
+> [!NOTE]
+> NAT gateways, load balancers, and databases can incur charges while they exist. Create them only in a short-lived test environment, watch the AWS billing console, and remove them when your validation is complete unless you deliberately choose to retain them.
 
 Add the same tag to every resource you want DriftCTL to scan. For example:
 
@@ -239,6 +243,10 @@ The first command stores credentials on your computer.
 > Never add access keys, secret access keys, session tokens, passwords, or other credentials to this repository, an `.env` file, a screenshot, or a chat message. If you take a screenshot of this step, cover the full access-key and secret-key values before saving it.
 
 ![Read-only AWS profile configuration and verification](screenshots/04a-read-only-profile-verification.png)
+
+The following evidence shows a dedicated read-only profile successfully reading a NAT gateway, an Application Load Balancer, and an RDS DB instance. It demonstrates that the collection identity can inspect the additional services without being used to make changes.
+
+![Read-only access verification for application infrastructure](screenshots/12-sprint3b-readonly-access-verification.png)
 
 ### Run a Live Scan With the Full Command
 
@@ -330,6 +338,10 @@ A clean baseline shows matching expected and live resource counts, `0` findings,
 
 ![Clean scoped live baseline](screenshots/04b-live-baseline-scan.png)
 
+When your environment contains application-facing resources, a clean baseline can include NAT gateways, Application Load Balancers, target groups, listeners, listener rules, and RDS DB instances. The counts will vary by environment. What matters is that DriftCTL reports `0` findings after Terraform has applied the intended configuration.
+
+![Clean live baseline with application infrastructure](screenshots/13-sprint3b-clean-live-baseline.png)
+
 ## 6. Reference: Controlled Live Drift Validation
 
 This optional section records the controlled non-production validation used for this project. It proves that DriftCTL can detect real differences between Terraform state and AWS. The exact resource names, IP addresses, tags, and temporary changes belong to this example environment; they are not required steps for every DriftCTL user.
@@ -408,10 +420,10 @@ This test checks that DriftCTL reports a route added manually to a private route
 > [!WARNING]
 > Changing routes can interrupt application traffic. Perform this test only in a dedicated non-production VPC, and delete the temporary route as soon as the scan has completed.
 
-In the AWS Console, open the private route table created by Terraform. Add this temporary route:
+In the AWS Console, open the private route table created by Terraform. If it already has a default route through a NAT gateway, edit or replace that route temporarily instead of trying to add a second `0.0.0.0/0` route:
 
 - Destination: `0.0.0.0/0`
-- Target: the test VPC's internet gateway
+- Target: the test VPC's internet gateway, rather than the NAT gateway
 
 Run:
 
@@ -419,9 +431,11 @@ Run:
 driftctl scan
 ```
 
-The terminal should show a `Networking` finding with `modified` drift and `severe` severity. Delete only the temporary default route, then confirm a clean scan.
+The terminal should show a `Networking` finding with `modified` drift and `severe` severity. Restore the original NAT-gateway default route immediately, then confirm a clean scan.
 
 ![Severe private route drift](screenshots/08-severe-private-route-drift.png)
+
+The application-infrastructure validation below shows the same kind of unsafe route replacement in an environment that uses a NAT gateway for private egress.
 
 ### Test 5: Find an IAM Policy Attachment Change
 
@@ -470,6 +484,57 @@ A clean result shows `0` findings and the green `No drift detected` panel. You c
 
 ![Clean scan after remediation](screenshots/11-clean-after-remediation.png)
 
+## 7. Optional: Validate Application Infrastructure Drift
+
+This section documents additional controlled tests for NAT gateways, Application Load Balancers, and RDS DB instances. Use it only when your own Terraform test environment contains equivalent resources. These are examples of how the tool was validated, not changes every DriftCTL user should make.
+
+> [!WARNING]
+> Perform these tests only in a dedicated non-production environment. DriftCTL remains read-only, but the temporary changes are made through the AWS Console or with a separate administrative identity such as the identity used by Terraform. Do not use the `driftctl-readonly` profile to make changes, and do not perform these tests against production services.
+
+### Test 8: Find a Target Group Health-Check Change
+
+Choose a Terraform-managed Application Load Balancer target group whose health-check path is explicitly declared in Terraform. In the AWS Console, open **EC2**, then **Target Groups**, select the test target group, and edit its health-check path. For example, change `/health` to `/ready`.
+
+Run the scan:
+
+```powershell
+driftctl scan
+```
+
+The terminal should show one `modified` `AWS Load Balancer Target Group` finding. A health-check configuration difference is normally reported as `moderate` because it can affect how the load balancer decides whether targets are ready to receive traffic. Restore the exact path recorded in Terraform, then run another scan and confirm a clean result.
+
+![Target group health-check drift](screenshots/14-sprint3b-target-group-drift.png)
+
+### Test 9: Find an RDS Deletion-Protection Change
+
+Choose a Terraform-managed RDS DB instance that has deletion protection enabled in Terraform. In the AWS Console, open **RDS**, select the test DB instance, choose **Modify**, temporarily disable deletion protection, select **Apply immediately**, and wait until the instance returns to the `Available` state.
+
+Run the scan:
+
+```powershell
+driftctl scan
+```
+
+The terminal should show one `modified` `AWS RDS DB Instance` finding. DriftCTL reports weaker deletion protection as `severe` because it makes accidental database removal easier. Re-enable deletion protection, wait until the modification finishes, and confirm a clean scan before continuing.
+
+![RDS deletion-protection drift](screenshots/15-sprint3b-rds-deletion-protection-drift.png)
+
+### Test 10: Reconfirm NAT Route Protection
+
+If the test VPC has a private route table whose default route uses a NAT gateway, temporarily replace that default route's target with the VPC internet gateway. Run `driftctl scan` immediately. The terminal should show a `modified` route-table finding with `severe` severity because the private route now points directly to the internet gateway.
+
+Restore the default route so that it targets the original NAT gateway. Then run a final scan:
+
+```powershell
+driftctl scan
+```
+
+The scan should show `0` findings and the green `No drift detected` panel. This final confirmation matters: it proves that the temporary controlled changes have been removed and that the Terraform expectation and AWS configuration match again.
+
+![Private route changed from NAT to internet gateway](screenshots/16-sprint3b-private-route-drift.png)
+
+![Clean scan after application-infrastructure remediation](screenshots/17-sprint3b-clean-after-remediation.png)
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -479,3 +544,5 @@ A clean result shows `0` findings and the green `No drift detected` panel. You c
 | Terraform state cannot be read | Point DriftCTL at the Terraform working directory that owns the applied state. In that directory, run `terraform show -json` to make sure Terraform can read the state. Do not commit this output because it can contain details about your infrastructure. |
 | `driftctl scan` says it needs a Terraform directory, region, report, or audit path | Make sure `driftctl.toml` is in the current Terraform project folder and includes all required `[scan]` values. You can also use the full command and provide the missing option directly. |
 | A resource is missing from a scoped scan | Check that the resource has every tag listed in your `--tag` options or in the `tags` setting of `driftctl.toml`. Then run `terraform plan` and `terraform apply` if Terraform still needs to add the tag. |
+| A NAT gateway, ALB, or RDS resource is not collected | Update the dedicated read-only policy from `infra/iam/driftctl-read-only-policy.json`, attach the new policy version to the scanning identity, then verify the profile can use the required read APIs. |
+| The scan is clean but the expected and live counts differ | Read the collection diagnostics. AWS-managed resources, tag-scoped exclusions, and unsupported Terraform resource types can change counts without representing drift. |
