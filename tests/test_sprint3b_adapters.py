@@ -90,3 +90,53 @@ def test_public_rds_has_specific_severity_impact_and_display_name() -> None:
     assert impact.security is ImpactLevel.HIGH
     assert impact.availability is ImpactLevel.NOT_ASSESSED
     assert readable_resource_type("rds_db_instance") == "AWS RDS DB Instance"
+
+
+def test_security_group_identity_uses_deployed_name_before_logical_name() -> None:
+    state = {"values": {"root_module": {"resources": [{"address": "aws_security_group.driftctl_sprint3b_alb", "mode": "managed", "type": "aws_security_group", "name": "driftctl_sprint3b_alb", "values": {"id": "sg-1", "name": "driftctl-sprint3b-alb-sg", "vpc_id": "vpc-1", "ingress": [], "egress": [], "tags": {"Project": "Test"}}}]}}}
+    live = {"SecurityGroups": [{"GroupId": "sg-1", "GroupName": "driftctl-sprint3b-alb-sg", "VpcId": "vpc-1", "IpPermissions": [], "IpPermissionsEgress": [], "Tags": [{"Key": "Project", "Value": "Test"}]}]}
+
+    expected = adapt_terraform_state_with_diagnostics(state).snapshots
+
+    assert expected[0].identity.name == "driftctl-sprint3b-alb-sg"
+    assert detect_drift(expected, adapt_boto3_inventory(live)) == []
+
+
+def test_missing_terraform_nat_state_defaults_to_available_but_failed_live_state_drifts() -> None:
+    state = {"values": {"root_module": {"resources": [{"address": "aws_nat_gateway.main", "mode": "managed", "type": "aws_nat_gateway", "name": "main", "values": {"id": "nat-1", "vpc_id": "vpc-1", "subnet_id": "subnet-1", "allocation_id": "eipalloc-1", "tags": {"Name": "app-nat"}}}]}}}
+    live = {"NatGateways": [{"NatGatewayId": "nat-1", "VpcId": "vpc-1", "SubnetId": "subnet-1", "ConnectivityType": "public", "State": "available", "NatGatewayAddresses": [{"AllocationId": "eipalloc-1"}], "Tags": [{"Key": "Name", "Value": "app-nat"}]}]}
+    expected = adapt_terraform_state_with_diagnostics(state).snapshots
+
+    assert detect_drift(expected, adapt_boto3_inventory(live)) == []
+
+    live["NatGateways"][0]["State"] = "failed"
+    findings = detect_drift(expected, adapt_boto3_inventory(live))
+    assert [(finding.identity.resource_type, finding.drift_type) for finding in findings] == [("nat_gateway", DriftType.MODIFIED)]
+
+
+def test_duplicate_parent_and_standalone_route_normalize_to_one_route() -> None:
+    route = {"destination_cidr_block": "0.0.0.0/0", "destination_ipv6_cidr_block": "", "gateway_id": "igw-1"}
+    state = {"values": {"root_module": {"resources": [
+        {"address": "aws_route_table.public", "mode": "managed", "type": "aws_route_table", "name": "public", "values": {"id": "rtb-1", "vpc_id": "vpc-1", "route": [route], "tags": {"Name": "public"}}},
+        {"address": "aws_route.public", "mode": "managed", "type": "aws_route", "name": "public", "values": {"route_table_id": "rtb-1", **route}},
+    ]}}}
+    live = {"RouteTables": [{"RouteTableId": "rtb-1", "VpcId": "vpc-1", "Routes": [{"DestinationCidrBlock": "0.0.0.0/0", "DestinationIpv6CidrBlock": None, "GatewayId": "igw-1", "Origin": "CreateRoute"}], "Associations": [], "Tags": [{"Key": "Name", "Value": "public"}]}]}
+
+    expected = adapt_terraform_state_with_diagnostics(state).snapshots
+
+    assert len(expected[0].attributes["routes"]) == 1
+    assert detect_drift(expected, adapt_boto3_inventory(live)) == []
+
+
+def test_duplicate_parent_and_standalone_acl_rule_normalize_to_one_entry() -> None:
+    rule = {"egress": False, "rule_no": 100, "protocol": "6", "rule_action": "allow", "cidr_block": "10.0.0.0/8", "ipv6_cidr_block": ""}
+    state = {"values": {"root_module": {"resources": [
+        {"address": "aws_network_acl.main", "mode": "managed", "type": "aws_network_acl", "name": "main", "values": {"id": "acl-1", "vpc_id": "vpc-1", "ingress": [rule], "egress": [], "tags": {"Name": "main-acl"}}},
+        {"address": "aws_network_acl_rule.app", "mode": "managed", "type": "aws_network_acl_rule", "name": "app", "values": {"network_acl_id": "acl-1", **rule}},
+    ]}}}
+    live = {"NetworkAcls": [{"NetworkAclId": "acl-1", "VpcId": "vpc-1", "Entries": [{"Egress": False, "RuleNumber": 100, "Protocol": "6", "RuleAction": "allow", "CidrBlock": "10.0.0.0/8", "Ipv6CidrBlock": None}], "Associations": [], "Tags": [{"Key": "Name", "Value": "main-acl"}]}]}
+
+    expected = adapt_terraform_state_with_diagnostics(state).snapshots
+
+    assert len(expected[0].attributes["entries"]) == 1
+    assert detect_drift(expected, adapt_boto3_inventory(live)) == []
