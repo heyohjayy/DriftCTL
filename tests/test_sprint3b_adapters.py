@@ -140,3 +140,21 @@ def test_duplicate_parent_and_standalone_acl_rule_normalize_to_one_entry() -> No
 
     assert len(expected[0].attributes["entries"]) == 1
     assert detect_drift(expected, adapt_boto3_inventory(live)) == []
+
+
+def test_deleted_live_nat_gateway_is_missing_when_terraform_still_expects_it() -> None:
+    live = _live()
+    live["NatGateways"][0]["State"] = "deleted"
+    expected = adapt_terraform_state_with_diagnostics(_state()).snapshots
+
+    findings = detect_drift(expected, adapt_boto3_inventory(live))
+    nat_findings = [finding for finding in findings if finding.identity.resource_type == "nat_gateway"]
+
+    assert len(nat_findings) == 1
+    assert nat_findings[0].drift_type is DriftType.MISSING
+
+
+def test_deleted_live_nat_gateway_is_not_unmanaged_when_terraform_does_not_expect_it() -> None:
+    live = {"NatGateways": [{"NatGatewayId": "nat-deleted", "State": "deleted", "SubnetId": "subnet-1", "VpcId": "vpc-1", "Tags": [{"Key": "Project", "Value": "Test"}]}]}
+
+    assert detect_drift([], adapt_boto3_inventory(live)) == []
