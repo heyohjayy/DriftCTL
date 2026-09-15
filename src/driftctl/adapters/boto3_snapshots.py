@@ -18,6 +18,24 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     snapshots += [_route_table(x) for x in payload.get("RouteTables", [])]
     snapshots += [_nacl(x) for x in payload.get("NetworkAcls", [])]
     for reservation in payload.get("Reservations", []): snapshots += [_instance(x) for x in reservation.get("Instances", [])]
+    subnets = {x.get("SubnetId"): x.get("VpcId") for x in payload.get("Subnets", [])}
+    snapshots += [_nat_gateway(x, subnets) for x in payload.get("NatGateways", [])]
+    raw_load_balancers = [x for x in payload.get("LoadBalancers", []) if x.get("Type", "application") == "application"]
+    load_balancers = [_load_balancer(x) for x in raw_load_balancers]; snapshots += load_balancers
+    load_balancer_names = {x.get("LoadBalancerArn"): _resource_name(x, "LoadBalancerName") for x in raw_load_balancers}
+    load_balancer_tags = {x.get("LoadBalancerArn"): _tags(x.get("Tags", [])) for x in raw_load_balancers}
+    raw_target_groups = payload.get("TargetGroups", [])
+    target_groups = [_target_group(x) for x in raw_target_groups]; snapshots += target_groups
+    target_group_names = dict(payload.get("TargetGroupReferences", {})); target_group_names.update({x.get("TargetGroupArn"): _resource_name(x, "TargetGroupName") for x in raw_target_groups})
+    listener_names: dict[str, str] = {}
+    for load_balancer_arn, listeners in payload.get("Listeners", {}).items():
+        for listener in listeners:
+            snapshot = _listener(listener, load_balancer_names.get(load_balancer_arn, load_balancer_arn), load_balancer_tags.get(load_balancer_arn, {}), target_group_names)
+            snapshots.append(snapshot); listener_names[listener.get("ListenerArn")] = snapshot.identity.name
+    for listener_arn, rules in payload.get("ListenerRules", {}).items():
+        listener_name = listener_names.get(listener_arn)
+        if listener_name: snapshots += [_listener_rule(x, listener_name, load_balancer_tags.get(_listener_load_balancer_arn(listener_arn, payload), {}), target_group_names) for x in rules if not x.get("IsDefault")]
+    snapshots += [_db_instance(x) for x in payload.get("DBInstances", [])]
     snapshots += [_role(x) for x in payload.get("IamRoles", [])]
     snapshots += [_profile(x) for x in payload.get("InstanceProfiles", [])]
     zones = [_zone(x) for x in payload.get("HostedZones", [])]; snapshots += zones
@@ -46,6 +64,42 @@ def _s3(bucket: dict[str, Any]) -> ResourceSnapshot:
 
 def _instance(x: dict[str, Any]) -> ResourceSnapshot:
     tags = _tags(x.get("Tags", [])); return ResourceSnapshot(ResourceIdentity("aws", "instance", _name(tags, x["InstanceId"])), ResourceCategory.COMPUTE, {"instance_type": x.get("InstanceType"), "ami": x.get("ImageId"), "subnet_id": x.get("SubnetId"), "associate_public_ip_address": bool(x.get("PublicIpAddress")), "security_group_ids": sorted(g["GroupId"] for g in x.get("SecurityGroups", [])), "tags": tags})
+
+
+def _resource_name(x: dict[str, Any], field: str) -> str:
+    tags = _tags(x.get("Tags", [])); return _name(tags, x.get(field, "unknown"))
+def _nat_gateway(x: dict[str, Any], subnets: dict[str, Any]) -> ResourceSnapshot:
+    tags = _tags(x.get("Tags", [])); subnet = x.get("SubnetId"); return ResourceSnapshot(ResourceIdentity("aws", "nat_gateway", _name(tags, x.get("NatGatewayId", "unknown"))), ResourceCategory.NETWORKING, {"subnet_id": subnet, "vpc_id": x.get("VpcId") or subnets.get(subnet), "allocation_ids": sorted(address.get("AllocationId") for address in x.get("NatGatewayAddresses", []) if address.get("AllocationId")), "connectivity_type": x.get("ConnectivityType") or "public", "state": x.get("State"), "tags": tags})
+def _load_balancer(x: dict[str, Any]) -> ResourceSnapshot:
+    tags = _tags(x.get("Tags", [])); return ResourceSnapshot(ResourceIdentity("aws", "application_load_balancer", _name(tags, x.get("LoadBalancerName", "unknown"))), ResourceCategory.NETWORKING, {"scheme": x.get("Scheme"), "ip_address_type": x.get("IpAddressType") or "ipv4", "subnet_ids": sorted(availability_zone.get("SubnetId") for availability_zone in x.get("AvailabilityZones", []) if availability_zone.get("SubnetId")), "security_group_ids": sorted(x.get("SecurityGroups", [])), "tags": tags})
+def _target_group(x: dict[str, Any]) -> ResourceSnapshot:
+    tags = _tags(x.get("Tags", [])); return ResourceSnapshot(ResourceIdentity("aws", "target_group", _name(tags, x.get("TargetGroupName", "unknown"))), ResourceCategory.NETWORKING, {"vpc_id": x.get("VpcId"), "protocol": x.get("Protocol"), "port": x.get("Port"), "target_type": x.get("TargetType") or "instance", "health_check": _health_check_live(x), "tags": tags})
+def _listener(x: dict[str, Any], load_balancer: str, inherited_tags: dict[str, str], target_groups: dict[str, str]) -> ResourceSnapshot:
+    tags = _tags(x.get("Tags", [])) or inherited_tags; return ResourceSnapshot(ResourceIdentity("aws", "load_balancer_listener", f"{load_balancer}|{x.get('Protocol')}|{x.get('Port')}"), ResourceCategory.NETWORKING, {"load_balancer": load_balancer, "protocol": x.get("Protocol"), "port": x.get("Port"), "ssl_policy": _none_if_blank(x.get("SslPolicy")), "certificate_arn": next((certificate.get("CertificateArn") for certificate in x.get("Certificates", []) if certificate.get("IsDefault")), None), "default_actions": _actions_live(x.get("DefaultActions", []), target_groups), "tags": tags})
+def _listener_rule(x: dict[str, Any], listener: str, inherited_tags: dict[str, str], target_groups: dict[str, str]) -> ResourceSnapshot:
+    tags = _tags(x.get("Tags", [])) or inherited_tags; return ResourceSnapshot(ResourceIdentity("aws", "load_balancer_listener_rule", f"{listener}|{x.get('Priority')}"), ResourceCategory.NETWORKING, {"listener": listener, "priority": str(x.get("Priority")), "conditions": _conditions_live(x.get("Conditions", [])), "actions": _actions_live(x.get("Actions", []), target_groups), "tags": tags})
+def _listener_load_balancer_arn(listener_arn: str, payload: dict[str, Any]) -> str | None:
+    for load_balancer_arn, listeners in payload.get("Listeners", {}).items():
+        if any(listener.get("ListenerArn") == listener_arn for listener in listeners): return load_balancer_arn
+    return None
+def _health_check_live(x: dict[str, Any]) -> dict[str, Any]: return {"enabled": bool(x.get("HealthCheckEnabled", True)), "protocol": x.get("HealthCheckProtocol"), "port": x.get("HealthCheckPort"), "path": x.get("HealthCheckPath"), "interval": x.get("HealthCheckIntervalSeconds"), "timeout": x.get("HealthCheckTimeoutSeconds"), "healthy_threshold": x.get("HealthyThresholdCount"), "unhealthy_threshold": x.get("UnhealthyThresholdCount"), "matcher": x.get("Matcher", {}).get("HttpCode")}
+def _actions_live(actions: list[dict[str, Any]], target_groups: dict[str, str]) -> list[dict[str, Any]]:
+    return sorted([{"type": action.get("Type"), "target_groups": _forward_live(action, target_groups), "redirect": _redirect_live(action.get("RedirectConfig")), "fixed_response": _fixed_response_live(action.get("FixedResponseConfig"))} for action in actions], key=repr)
+def _redirect_live(value: dict[str, Any] | None) -> list[dict[str, Any]]: return [] if not value else [{"protocol": value.get("Protocol"), "host": value.get("Host"), "port": value.get("Port"), "path": value.get("Path"), "query": value.get("Query"), "status_code": value.get("StatusCode")}]
+def _fixed_response_live(value: dict[str, Any] | None) -> list[dict[str, Any]]: return [] if not value else [{"content_type": value.get("ContentType"), "message_body": value.get("MessageBody"), "status_code": value.get("StatusCode")}]
+def _forward_live(action: dict[str, Any], target_groups: dict[str, str]) -> list[dict[str, Any]]:
+    values = []
+    for target in action.get("ForwardConfig", {}).get("TargetGroups", []):
+        arn = target.get("TargetGroupArn"); values.append({"target_group": target_groups.get(arn, arn), "weight": target.get("Weight")})
+    if not values and action.get("TargetGroupArn"): values.append({"target_group": target_groups.get(action["TargetGroupArn"], action["TargetGroupArn"]), "weight": None})
+    return sorted(values, key=repr)
+def _conditions_live(conditions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    values = []
+    for item in conditions:
+        config = item.get("HostHeaderConfig") or item.get("PathPatternConfig") or {}; values.append({"field": item.get("Field"), "values": sorted(item.get("Values") or config.get("Values", []))})
+    return sorted(values, key=repr)
+def _db_instance(x: dict[str, Any]) -> ResourceSnapshot:
+    tags = _tags(x.get("Tags", [])); return ResourceSnapshot(ResourceIdentity("aws", "rds_db_instance", _name(tags, x.get("DBInstanceIdentifier", "unknown"))), ResourceCategory.DATABASE, {"engine": x.get("Engine"), "engine_version": x.get("EngineVersion"), "instance_class": x.get("DBInstanceClass"), "allocated_storage": x.get("AllocatedStorage"), "storage_type": x.get("StorageType"), "storage_encrypted": bool(x.get("StorageEncrypted")), "publicly_accessible": bool(x.get("PubliclyAccessible")), "vpc_security_group_ids": sorted(group.get("VpcSecurityGroupId") for group in x.get("VpcSecurityGroups", []) if group.get("VpcSecurityGroupId")), "db_subnet_group_name": x.get("DBSubnetGroup", {}).get("DBSubnetGroupName"), "backup_retention_period": x.get("BackupRetentionPeriod"), "deletion_protection": bool(x.get("DeletionProtection")), "multi_az": bool(x.get("MultiAZ")), "port": x.get("Endpoint", {}).get("Port") or x.get("Port"), "copy_tags_to_snapshot": bool(x.get("CopyTagsToSnapshot")), "tags": tags})
 
 
 def _route_table(x: dict[str, Any]) -> ResourceSnapshot:
