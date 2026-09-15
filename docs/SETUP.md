@@ -1,8 +1,11 @@
-# Setup and Usage Guide
+# Manual Setup and Usage Guide
 
-This guide shows you how to install and use Infrastructure Drift Control (DriftCTL). It begins with a safe example that does not use AWS, then explains how to scan a small non-production AWS environment.
+This guide shows you how to install and use Infrastructure Drift Control (DriftCTL) manually from PowerShell. It begins with a safe example that does not use AWS, then explains how to scan a small non-production AWS environment.
 
 DriftCTL is read-only. It reads Terraform state and AWS configuration, compares them, writes a report, and suggests what to check next. It does not run `terraform apply`, edit Terraform state, or make changes in AWS.
+
+> [!NOTE]
+> This guide covers manual scans. It does not configure Jenkins, GitHub Actions, or another automation platform.
 
 ## What You Will Do
 
@@ -10,7 +13,7 @@ DriftCTL is read-only. It reads Terraform state and AWS configuration, compares 
 2. Run automated checks to confirm the tool works on your computer.
 3. Run a safe example scan using files included in this repository.
 4. Set up read-only AWS access and scan a Terraform-managed test environment.
-5. Optionally make small, temporary changes to see how DriftCTL reports real drift.
+5. Make controlled, temporary changes to see how DriftCTL reports different kinds of real drift.
 
 ## Before You Start
 
@@ -56,7 +59,7 @@ Move into the new project folder:
 cd infra-drift-control
 ```
 
-Unless a step says otherwise, run the remaining commands from this folder.
+Unless a step says otherwise, run the remaining commands from the `infra-drift-control` project folder that you just opened with `cd infra-drift-control`.
 
 ## 2. Create a Python Environment
 
@@ -122,7 +125,7 @@ The `-q` option makes the result shorter and easier to read. Do not continue to 
 
 ## 4. Run the Safe Offline Demonstration
 
-The repository includes two sample files:
+When you clone this repository, it already includes two complete sample inventory files. You do not need to create AWS resources, create Terraform files, or configure AWS credentials for this offline demonstration:
 
 - `examples/expected.json`: a sample of the state Terraform records after it applies infrastructure.
 - `examples/live.json`: a sample of the information AWS returns when DriftCTL reads live resources.
@@ -138,7 +141,8 @@ After the scan, DriftCTL creates two files:
 - `reports/offline-drift-report.md`: a report grouped by resource type and severity.
 - `audit/offline-events.jsonl`: an append-only audit log. Each line is a JSON event created during the scan.
 
-These files are excluded from Git. A live report can contain details about your infrastructure, so it should not be published by accident.
+> [!NOTE]
+> The files created by this offline example contain only the repository's sample data. A report from a real scan can contain details about your own infrastructure, so review it carefully before sharing it.
 
 Display the report in PowerShell:
 
@@ -146,13 +150,21 @@ Display the report in PowerShell:
 Get-Content .\reports\offline-drift-report.md
 ```
 
+This example is designed to produce findings. The critical, severe, and moderate results are deliberate sample data, not resources in your AWS account. It is a safe way to learn how DriftCTL presents different risk levels before scanning real infrastructure.
+
 Every finding has one of these three drift types:
 
 - `missing`: Terraform expects a resource, but AWS no longer has it.
 - `unmanaged`: AWS has a resource that Terraform is not managing.
 - `modified`: Terraform and AWS both have the resource, but one or more settings are different.
 
-![Offline drift scan and report](screenshots/03-offline-drift-report.png)
+The full offline demonstration has seven findings, so its evidence is split into three readable screenshots:
+
+![Offline drift summary](screenshots/03a-offline-drift-summary.png)
+
+![Offline drift findings, middle section](screenshots/03b-offline-drift-findings-middle.png)
+
+![Offline drift findings, final section](screenshots/03c-offline-drift-findings-end.png)
 
 ## 5. Prepare a Safe Live AWS Demonstration
 
@@ -162,7 +174,9 @@ Use a dedicated AWS sandbox account when possible. If you use one personal accou
 
 ### Create Test Infrastructure
 
-Create a separate Terraform project for the AWS resources you want to scan. Start small: one EC2 instance and one security group are enough. Keep this Terraform project outside the DriftCTL repository because it is the environment being inspected, while DriftCTL is the reusable tool doing the inspection.
+Create a separate Terraform project for the AWS resources you want to scan. Keep this Terraform project outside the DriftCTL repository because it is the environment being inspected, while DriftCTL is the reusable tool doing the inspection.
+
+For the full live validation shown later in this guide, the Terraform project includes an EC2 instance, security groups, a VPC, public and private subnets, an internet gateway, route tables, a private network ACL, an IAM role with an instance profile, a private Route 53 hosted zone, and an A record. Start with only the services that make sense for your own learning or non-production environment.
 
 Add the same tag to every resource you want DriftCTL to scan. For example:
 
@@ -208,7 +222,10 @@ Check that the profile works and see which AWS identity it uses:
 aws sts get-caller-identity --profile driftctl-readonly
 ```
 
-The first command stores credentials on your computer. Never add access keys, secret access keys, session tokens, passwords, or other credentials to this repository, an `.env` file, a screenshot, or a chat message. If you take a screenshot of this step, cover the full access-key and secret-key values before saving it.
+The first command stores credentials on your computer.
+
+> [!WARNING]
+> Never add access keys, secret access keys, session tokens, passwords, or other credentials to this repository, an `.env` file, a screenshot, or a chat message. If you take a screenshot of this step, cover the full access-key and secret-key values before saving it.
 
 ![Read-only AWS profile configuration and verification](screenshots/04a-read-only-profile-verification.png)
 
@@ -223,6 +240,8 @@ driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftc
 DriftCTL uses `terraform show -json` to read the applied Terraform state. It does not run `terraform init`, `terraform plan`, `terraform apply`, or `terraform refresh`.
 
 Your first live scan is your **baseline scan**. Right after Terraform applies your infrastructure, the report should normally show no unexpected drift. If it shows a collection diagnostic, read the message before continuing. A collection problem is not the same as a clean scan.
+
+Route 53 automatically creates two records at the root of every hosted zone: an **SOA** (Start of Authority) record and **NS** (Name Server) records. These are managed by Route 53, not normally declared in Terraform. DriftCTL recognises these provider-managed records and does not report them as unmanaged drift.
 
 ### Optional: Save the Scan Settings in a Configuration File
 
@@ -244,7 +263,8 @@ audit = "driftctl-output/events.jsonl"
 
 `terraform_dir = "."` means “use the folder that contains this configuration file.” The report and audit paths also start from that same folder. This keeps the scan output next to the infrastructure it describes.
 
-Do not put AWS access keys, secret access keys, session tokens, passwords, or other credentials in `driftctl.toml`. The tool rejects configuration keys that look like secrets.
+> [!WARNING]
+> Do not put AWS access keys, secret access keys, session tokens, passwords, or other credentials in `driftctl.toml`. The tool rejects configuration keys that look like secrets.
 
 After activating the DriftCTL virtual environment, move into the Terraform project:
 
@@ -298,73 +318,49 @@ A clean baseline shows matching expected and live resource counts, `0` findings,
 
 ![Clean scoped live baseline](screenshots/04b-live-baseline-scan.png)
 
-## 6. Run Controlled Live Drift Validation
+## 6. Reference: Controlled Live Drift Validation
 
-This optional section proves that DriftCTL can detect real differences between Terraform state and AWS. You will make small, temporary changes in a non-production environment, run a scan, and then remove each change.
+This optional section records the controlled non-production validation used for this project. It proves that DriftCTL can detect real differences between Terraform state and AWS. The exact resource names, IP addresses, tags, and temporary changes belong to this example environment; they are not required steps for every DriftCTL user.
+
+In normal use, point DriftCTL at your own applied Terraform project and run one scan. It compares every supported resource inside the selected scope and reports all drift it finds in that run. These tests introduce one temporary change at a time only so that each type of detection can be shown and checked clearly.
 
 DriftCTL stays read-only during every test. The temporary changes below are made manually in the AWS Console so that the tool has drift to find.
 
-Use the same Terraform directory, AWS profile, region, and tag scope as the baseline scan. The examples use `Project=Test`. Replace the placeholder path with your own Terraform project path.
+Use the same Terraform directory, AWS profile, region, and tag scope as the baseline scan. The example environment uses `Project=Test`; use a tag and values that match your own environment.
 
 ### Test 1: Find a Small Tag Change
 
-This test checks that a tag-only change on a Terraform-managed EC2 instance is reported as `modified` drift with `minor` severity.
+This test checks that a tag-only change on a Terraform-managed VPC is reported as `modified` drift with `minor` severity.
 
-In the AWS Console, open **EC2**, then **Instances**. Select a Terraform-managed test instance that has `Project=Test`. In the **Tags** tab, add this temporary tag:
+In the AWS Console, open **VPC**, select a Terraform-managed test VPC that has `Project=Test`, and add this temporary tag:
 
 ```text
-Owner=Demo
+Owner=drift-validation
 ```
 
-Do not remove the `Project=Test` tag. DriftCTL needs it to include the instance in the scan.
-
-If you are using the full command, run:
+Do not remove the `Project=Test` tag. DriftCTL needs it to include the VPC in the scan. From the Terraform project folder, run:
 
 ```powershell
-driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\minor-tag-drift-report.md --audit audit\minor-tag-drift-events.jsonl
+driftctl scan
 ```
 
-If you are using `driftctl.toml`, run this shorter version from the Terraform project folder. The two output options give this test its own report and audit log:
+The terminal should show a `Networking` finding with `modified` drift and `minor` severity. Remove the temporary `Owner=drift-validation` tag in the AWS Console, then run `driftctl scan` again and confirm the green `No drift detected` result before continuing.
 
-```powershell
-driftctl scan --report driftctl-output\minor-tag-drift-report.md --audit driftctl-output\minor-tag-drift-events.jsonl
-```
-
-Display the report:
-
-```powershell
-Get-Content .\driftctl-output\minor-tag-drift-report.md
-```
-
-The report should show a `Compute` finding with `modified` drift and `minor` severity. Remove the temporary `Owner=Demo` tag in the AWS Console before moving to the next test.
-
-![Minor EC2 tag drift](screenshots/05-minor-tag-drift.png)
+![Minor VPC tag drift](screenshots/05-minor-tag-drift.png)
 
 ### Test 2: Find a Resource Terraform Does Not Manage
 
 This test checks that DriftCTL finds a resource created in AWS that is not listed in Terraform state.
 
-In the AWS Console, create an **unattached security group** in the same VPC as your test infrastructure. Give it a clear temporary name, add the tag `Project=Test`, and do not add inbound rules. An unattached security group with no inbound rules does not expose an instance and does not create EC2 running cost.
+In the AWS Console, create an **unattached security group** in the same VPC as your test infrastructure. Give it a clear temporary name, add both `Project=Test` and an optional descriptive tag such as `Purpose=drift-control-validation`, and do not add inbound rules. An unattached security group with no inbound rules does not expose an instance and does not create EC2 running cost.
 
-If you are using the full command, run:
-
-```powershell
-driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\unmanaged-resource-report.md --audit audit\unmanaged-resource-events.jsonl
-```
-
-If you are using `driftctl.toml`, run:
+Run:
 
 ```powershell
-driftctl scan --report driftctl-output\unmanaged-resource-report.md --audit driftctl-output\unmanaged-resource-events.jsonl
+driftctl scan
 ```
 
-Display the report:
-
-```powershell
-Get-Content .\driftctl-output\unmanaged-resource-report.md
-```
-
-The report should show a `Networking` finding with `unmanaged` drift. Delete the temporary security group in the AWS Console before moving to the next test.
+The terminal should show a `Networking` finding with `unmanaged` drift. Delete the temporary security group in the AWS Console, then run `driftctl scan` again and confirm a clean result before moving on.
 
 ![Unmanaged in-scope security group](screenshots/06-unmanaged-resource.png)
 
@@ -374,61 +370,93 @@ This test checks that DriftCTL treats public SSH access as a `critical` risk. Th
 
 Before this test, create and apply a separate **Terraform-managed, unattached** security group with the scan tag and no inbound rules. It must already exist in Terraform state before you edit it manually. Do not use a security group attached to an EC2 instance. First run a baseline scan and make sure it returns `0` findings.
 
+> [!WARNING]
+> Use only an unattached security group in a non-production environment. Remove the temporary public SSH rule immediately after verifying the finding.
+
 In the AWS Console, open the detached test security group's **Inbound rules**. Add a temporary rule with these values:
 
 - Type: `SSH`
 - Port: `22`
 - Source: `Anywhere-IPv4` (`0.0.0.0/0`)
 
-Save the rule, run the scan immediately, capture the result, and then remove the rule immediately.
-
-If you are using the full command, run:
+Save the rule and run the scan immediately:
 
 ```powershell
-driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\critical-security-drift-report.md --audit audit\critical-security-drift-events.jsonl
+driftctl scan
 ```
 
-If you are using `driftctl.toml`, run:
-
-```powershell
-driftctl scan --report driftctl-output\critical-security-drift-report.md --audit driftctl-output\critical-security-drift-events.jsonl
-```
-
-Display the report:
-
-```powershell
-Get-Content .\driftctl-output\critical-security-drift-report.md
-```
-
-The report should show a `Networking` finding with `modified` drift and `critical` severity. It should say that public SSH exposure caused the risk level. Remove the temporary SSH rule in the AWS Console immediately after checking the result.
+The terminal should show a `Networking` finding with `modified` drift and `critical` severity. It should state that public SSH exposure caused the risk level. Remove the temporary SSH rule in the AWS Console immediately after checking the result, then confirm a clean scan.
 
 ![Critical public SSH drift](screenshots/07-critical-security-drift.png)
 
-### Test 4: Confirm the Environment Is Clean Again
+### Test 4: Find an Unsafe Private Route
 
-After removing every temporary change, run another baseline scan. This confirms that AWS matches Terraform state again.
+This test checks that DriftCTL reports a route added manually to a private route table. Use a dedicated test VPC with no production workloads.
 
-If you are using the full command, run:
+> [!WARNING]
+> Changing routes can interrupt application traffic. Perform this test only in a dedicated non-production VPC, and delete the temporary route as soon as the scan has completed.
 
-```powershell
-driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\clean-after-remediation-report.md --audit audit\clean-after-remediation-events.jsonl
-```
+In the AWS Console, open the private route table created by Terraform. Add this temporary route:
 
-If you are using `driftctl.toml`, run:
+- Destination: `0.0.0.0/0`
+- Target: the test VPC's internet gateway
 
-```powershell
-driftctl scan --report driftctl-output\clean-after-remediation-report.md --audit driftctl-output\clean-after-remediation-events.jsonl
-```
-
-Display the final report:
+Run:
 
 ```powershell
-Get-Content .\driftctl-output\clean-after-remediation-report.md
+driftctl scan
 ```
 
-A clean result shows matching expected and live resource counts, `0` findings, and `No drift detected`. You can keep the detached Terraform-managed test security group as a reusable test fixture if it stays unattached and has no inbound rules.
+The terminal should show a `Networking` finding with `modified` drift and `severe` severity. Delete only the temporary default route, then confirm a clean scan.
 
-![Clean scan after remediation](screenshots/08-clean-after-remediation.png)
+![Severe private route drift](screenshots/08-severe-private-route-drift.png)
+
+### Test 5: Find an IAM Policy Attachment Change
+
+This test checks that DriftCTL detects a managed policy attached manually to a Terraform-managed IAM role.
+
+In the AWS Console, open the dedicated test role created by Terraform. Attach the AWS-managed policy whose exact name is `ReadOnlyAccess` and whose ARN is `arn:aws:iam::aws:policy/ReadOnlyAccess`. Do not remove the policy Terraform attached to the role.
+
+> [!WARNING]
+> Attach the temporary policy only to a dedicated test role. Detach it immediately after the scan; do not use this validation step on a role that supports a production workload.
+
+Run:
+
+```powershell
+driftctl scan
+```
+
+The terminal should show an `IAM` finding with `modified` drift and `moderate` severity. Detach only the temporary `ReadOnlyAccess` policy, then confirm a clean scan.
+
+![IAM policy attachment drift](screenshots/09-iam-policy-drift.png)
+
+### Test 6: Find a Route 53 Record Change
+
+This test checks that DriftCTL detects a record value changed outside Terraform.
+
+In Route 53, open the private test hosted zone. Edit the Terraform-managed A record and replace its IP address with a different private test address. For example, change `10.30.2.10` to `10.30.2.11`.
+
+Run:
+
+```powershell
+driftctl scan
+```
+
+The terminal should show a modified Route 53 record finding. Restore the original record value exactly, then confirm a clean scan.
+
+![Route 53 record drift](screenshots/10-route53-record-drift.png)
+
+### Test 7: Confirm the Environment Is Clean Again
+
+After removing every temporary change, run one final baseline scan:
+
+```powershell
+driftctl scan
+```
+
+A clean result shows `0` findings and the green `No drift detected` panel. You can keep a detached Terraform-managed test security group as a reusable test fixture if it stays unattached and has no inbound rules.
+
+![Clean scan after remediation](screenshots/11-clean-after-remediation.png)
 
 ## Troubleshooting
 
