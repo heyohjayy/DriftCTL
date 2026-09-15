@@ -120,7 +120,7 @@ def _attach(store: dict[str, Any], parents: set[Any], parent: Any, child: str, v
 
 def _security_group(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot:
     ingress = [_sg_rule(x) for x in v.get("ingress", [])] + c.get("ingress", []); egress = [_sg_rule(x) for x in v.get("egress", [])] + c.get("egress", [])
-    return ResourceSnapshot(ResourceIdentity("aws", "security_group", v.get("group_name") or r["name"]), ResourceCategory.NETWORKING, {"vpc_id": v.get("vpc_id"), "ingress": canonicalize_security_group_rules(ingress), "egress": canonicalize_security_group_rules(egress), "tags": v.get("tags", {})}, r.get("address"))
+    return ResourceSnapshot(ResourceIdentity("aws", "security_group", v.get("name") or v.get("group_name") or v.get("id") or r["name"]), ResourceCategory.NETWORKING, {"vpc_id": v.get("vpc_id"), "ingress": canonicalize_security_group_rules(ingress), "egress": canonicalize_security_group_rules(egress), "tags": v.get("tags", {})}, r.get("address"))
 
 
 def _sg_rule(v: dict[str, Any]) -> dict[str, Any]:
@@ -130,13 +130,13 @@ def _sg_rule(v: dict[str, Any]) -> dict[str, Any]:
 def _network(r: dict[str, Any], v: dict[str, Any], kind: str, attrs: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", kind, v.get("tags", {}).get("Name") or v.get("id") or r["name"]), ResourceCategory.NETWORKING, attrs, r.get("address"))
 
 def _route_table(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot:
-    routes = [_route(x) for x in v.get("route", [])] + c.get("routes", []); routes = [route for route in routes if route.get("target") != "local"]; return _network(r, v, "route_table", {"vpc_id": v.get("vpc_id"), "routes": sorted(routes, key=repr), "associations": sorted(c.get("associations", []), key=repr), "tags": v.get("tags", {})})
+    routes = [_route(x) for x in v.get("route", [])] + c.get("routes", []); routes = _deduplicate([route for route in routes if route.get("target") != "local"]); return _network(r, v, "route_table", {"vpc_id": v.get("vpc_id"), "routes": sorted(routes, key=repr), "associations": sorted(c.get("associations", []), key=repr), "tags": v.get("tags", {})})
 
 def _route(v: dict[str, Any]) -> dict[str, Any]:
     target = next((v.get(k) for k in ("gateway_id", "nat_gateway_id", "transit_gateway_id", "vpc_peering_connection_id", "network_interface_id", "instance_id") if v.get(k)), None); return {"destination_ipv4": _none_if_blank(v.get("destination_cidr_block") or v.get("cidr_block")), "destination_ipv6": _none_if_blank(v.get("destination_ipv6_cidr_block")), "target": target, "target_type": "internet_gateway" if target and str(target).startswith("igw-") else None}
 
 def _nacl(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot:
-    entries = [_acl_entry(x) for x in v.get("ingress", [])] + [_acl_entry({**x, "egress": True}) for x in v.get("egress", [])] + c.get("entries", []); return _network(r, v, "network_acl", {"vpc_id": v.get("vpc_id"), "entries": sorted(entries, key=repr), "associations": sorted(c.get("associations", []), key=repr), "tags": v.get("tags", {})})
+    entries = [_acl_entry(x) for x in v.get("ingress", [])] + [_acl_entry({**x, "egress": True}) for x in v.get("egress", [])] + c.get("entries", []); return _network(r, v, "network_acl", {"vpc_id": v.get("vpc_id"), "entries": sorted(_deduplicate(entries), key=repr), "associations": sorted(c.get("associations", []), key=repr), "tags": v.get("tags", {})})
 
 def _acl_entry(v: dict[str, Any]) -> dict[str, Any]: return {"egress": bool(v.get("egress")), "rule_number": v.get("rule_no", v.get("rule_number")), "protocol": str(v.get("protocol")), "action": v.get("rule_action", v.get("action")), "cidr_block": _none_if_blank(v.get("cidr_block")), "ipv6_cidr_block": _none_if_blank(v.get("ipv6_cidr_block"))}
 
@@ -161,7 +161,7 @@ def _instance(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return 
 def _named(v: dict[str, Any], r: dict[str, Any]) -> str: return v.get("tags", {}).get("Name") or v.get("name") or v.get("id") or r["name"]
 def _is_application_lb(v: dict[str, Any]) -> bool: return v.get("load_balancer_type", "application") == "application"
 def _nat_gateway(r: dict[str, Any], v: dict[str, Any], subnets: dict[str, Any]) -> ResourceSnapshot:
-    subnet = v.get("subnet_id"); return ResourceSnapshot(ResourceIdentity("aws", "nat_gateway", _named(v, r)), ResourceCategory.NETWORKING, {"subnet_id": subnet, "vpc_id": v.get("vpc_id") or subnets.get(subnet), "allocation_ids": sorted([v["allocation_id"]] if v.get("allocation_id") else []), "connectivity_type": v.get("connectivity_type") or "public", "state": v.get("state"), "tags": v.get("tags", {})}, r.get("address"))
+    subnet = v.get("subnet_id"); return ResourceSnapshot(ResourceIdentity("aws", "nat_gateway", _named(v, r)), ResourceCategory.NETWORKING, {"subnet_id": subnet, "vpc_id": v.get("vpc_id") or subnets.get(subnet), "allocation_ids": sorted([v["allocation_id"]] if v.get("allocation_id") else []), "connectivity_type": v.get("connectivity_type") or "public", "state": v.get("state") or "available", "tags": v.get("tags", {})}, r.get("address"))
 def _load_balancer(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
     subnet_ids = list(v.get("subnets", [])) + [item.get("subnet_id") for item in v.get("subnet_mapping", []) if item.get("subnet_id")]
     return ResourceSnapshot(ResourceIdentity("aws", "application_load_balancer", _named(v, r)), ResourceCategory.NETWORKING, {"scheme": v.get("internal") and "internal" or "internet-facing", "ip_address_type": v.get("ip_address_type") or "ipv4", "subnet_ids": sorted(set(subnet_ids)), "security_group_ids": sorted(v.get("security_groups", [])), "tags": v.get("tags", {})}, r.get("address"))
@@ -198,3 +198,5 @@ def _forward_tf(action: dict[str, Any], target_groups: dict[str, str]) -> list[d
             arn = target.get("arn"); values.append({"target_group": target_groups.get(arn, arn), "weight": target.get("weight")})
     if not values and action.get("target_group_arn"): values.append({"target_group": target_groups.get(action["target_group_arn"], action["target_group_arn"]), "weight": None})
     return sorted(values, key=repr)
+def _deduplicate(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return list({json.dumps(value, default=str, sort_keys=True): value for value in values}.values())
