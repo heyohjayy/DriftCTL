@@ -120,6 +120,39 @@ class DnsRecordChangeRule:
         return None
 
 
+class RdsPublicAccessRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.identity.resource_type != "rds_db_instance" or finding.drift_type not in {DriftType.MODIFIED, DriftType.UNMANAGED}:
+            return None
+        if finding.live and finding.live.attributes.get("publicly_accessible"):
+            return SeverityDecision(
+                Severity.SEVERE,
+                "RdsPublicAccessRule: an RDS DB instance is publicly accessible.",
+                RemediationRecommendation(
+                    "Review and remove public database exposure through an approved Terraform change.",
+                    ("Validate whether public reachability is explicitly required.", "Prefer private subnets and restricted security groups.", "Review terraform plan and obtain approval before apply."),
+                ),
+            )
+        return None
+
+
+class RdsProtectionRegressionRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.identity.resource_type != "rds_db_instance" or finding.drift_type is not DriftType.MODIFIED:
+            return None
+        encryption = finding.changes.get("storage_encrypted")
+        deletion = finding.changes.get("deletion_protection")
+        encryption_weakened = bool(encryption and encryption.get("expected") and not encryption.get("live"))
+        deletion_weakened = bool(deletion and deletion.get("expected") and not deletion.get("live"))
+        if encryption_weakened or deletion_weakened:
+            return SeverityDecision(
+                Severity.SEVERE,
+                "RdsProtectionRegressionRule: expected encryption or deletion protection was weakened.",
+                RemediationRecommendation("Restore the approved RDS protection settings after review.", ("Confirm whether the change was authorized.", "Review terraform plan and obtain approval before apply.")),
+            )
+        return None
+
+
 class MissingResourceRule:
     def evaluate(self, finding: Finding) -> SeverityDecision | None:
         if finding.drift_type is DriftType.MISSING:
@@ -209,7 +242,7 @@ def _generic_remediation() -> RemediationRecommendation:
 
 
 def default_rules() -> list[SeverityRule]:
-    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
+    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
 
 
 def _has_administrator_access(policy_arns: list[str]) -> bool:

@@ -12,8 +12,9 @@ class AwsCollectionError(RuntimeError): pass
 
 
 class AwsInventoryCollector:
-    def __init__(self, ec2_client: Any, s3_client: Any, iam_client: Any | None = None, route53_client: Any | None = None) -> None:
+    def __init__(self, ec2_client: Any, s3_client: Any, iam_client: Any | None = None, route53_client: Any | None = None, elbv2_client: Any | None = None, rds_client: Any | None = None) -> None:
         self.ec2_client, self.s3_client, self.iam_client, self.route53_client = ec2_client, s3_client, iam_client, route53_client
+        self.elbv2_client, self.rds_client = elbv2_client, rds_client
         self.diagnostics: list[dict[str, str]] = []
 
     def collect(self, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
@@ -28,11 +29,16 @@ class AwsInventoryCollector:
                 "InternetGateways": self._ec2("describe_internet_gateways", "InternetGateways", scope),
                 "RouteTables": self._ec2("describe_route_tables", "RouteTables", scope),
                 "NetworkAcls": self._ec2("describe_network_acls", "NetworkAcls", scope),
+                "NatGateways": self._ec2("describe_nat_gateways", "NatGateways", scope),
                 "IamRoles": self._roles(scope) if self.iam_client else [],
                 "InstanceProfiles": self._profiles(scope) if self.iam_client else [],
-                "HostedZones": [], "RecordSets": {}, "CollectionDiagnostics": self.diagnostics,
+                "HostedZones": [], "RecordSets": {}, "LoadBalancers": [], "TargetGroups": [], "TargetGroupReferences": {},
+                "Listeners": {}, "ListenerRules": {},
+                "DBInstances": self._db_instances(scope) if self.rds_client else [],
+                "CollectionDiagnostics": self.diagnostics,
             }
             if self.route53_client: inventory["HostedZones"], inventory["RecordSets"] = self._zones(scope)
+            if self.elbv2_client: inventory.update(self._load_balancing(scope))
             return inventory
         except (BotoCoreError, ClientError) as error:
             raise AwsCollectionError(f"Read-only AWS inventory collection failed: {error}") from error
@@ -106,15 +112,60 @@ class AwsInventoryCollector:
                 zones.append(zone); records[zone_id] = [record for p in self.route53_client.get_paginator("list_resource_record_sets").paginate(HostedZoneId=zone_id) for record in p.get("ResourceRecordSets", [])]
         return zones, records
 
+    def _load_balancing(self, scope: dict[str, str]) -> dict[str, Any]:
+        load_balancers = self._elb_tagged("describe_load_balancers", "LoadBalancers", scope)
+        all_target_groups = self._elb_tagged("describe_target_groups", "TargetGroups", {})
+        target_groups = [item for item in all_target_groups if _matches(item.get("Tags", []), scope)]
+        listeners: dict[str, list[dict[str, Any]]] = {}
+        rules: dict[str, list[dict[str, Any]]] = {}
+        for load_balancer in load_balancers:
+            arn = load_balancer["LoadBalancerArn"]
+            listener_values = [item for page in self.elbv2_client.get_paginator("describe_listeners").paginate(LoadBalancerArn=arn) for item in page.get("Listeners", [])]
+            for listener in listener_values:
+                listener["Tags"] = load_balancer.get("Tags", [])
+                listener_arn = listener["ListenerArn"]
+                rules[listener_arn] = [item for page in self.elbv2_client.get_paginator("describe_rules").paginate(ListenerArn=listener_arn) for item in page.get("Rules", [])]
+                for rule in rules[listener_arn]: rule["Tags"] = load_balancer.get("Tags", [])
+            listeners[arn] = listener_values
+        references = {item["TargetGroupArn"]: _tag_name(item.get("Tags", [])) or item.get("TargetGroupName") for item in all_target_groups}
+        return {"LoadBalancers": load_balancers, "TargetGroups": target_groups, "TargetGroupReferences": references, "Listeners": listeners, "ListenerRules": rules}
+
+    def _elb_tagged(self, operation: str, result_key: str, scope: dict[str, str]) -> list[dict[str, Any]]:
+        values = [item for page in self.elbv2_client.get_paginator(operation).paginate() for item in page.get(result_key, [])]
+        arn_key = "LoadBalancerArn" if result_key == "LoadBalancers" else "TargetGroupArn"
+        tags_by_arn: dict[str, list[dict[str, str]]] = {}
+        for start in range(0, len(values), 20):
+            arns = [value[arn_key] for value in values[start:start + 20]]
+            for item in self.elbv2_client.describe_tags(ResourceArns=arns).get("TagDescriptions", []): tags_by_arn[item["ResourceArn"]] = item.get("Tags", [])
+        for value in values: value["Tags"] = tags_by_arn.get(value[arn_key], [])
+        return [value for value in values if _matches(value["Tags"], scope)]
+
+    def _db_instances(self, scope: dict[str, str]) -> list[dict[str, Any]]:
+        values: list[dict[str, Any]] = []
+        for page in self.rds_client.get_paginator("describe_db_instances").paginate():
+            for instance in page.get("DBInstances", []):
+                item = dict(instance)
+                item["Tags"] = self.rds_client.list_tags_for_resource(ResourceName=item["DBInstanceArn"]).get("TagList", [])
+                if _matches(item["Tags"], scope): values.append(item)
+        return values
+
 
 def collect_live_inventory(profile: str | None, region: str, role_arn: str | None, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
     session = _session(profile, region, role_arn)
-    return AwsInventoryCollector(session.client("ec2", region_name=region), session.client("s3", region_name=region), session.client("iam"), session.client("route53")).collect(tag_scope)
+    return AwsInventoryCollector(
+        session.client("ec2", region_name=region),
+        session.client("s3", region_name=region),
+        session.client("iam"),
+        session.client("route53"),
+        session.client("elbv2", region_name=region),
+        session.client("rds", region_name=region),
+    ).collect(tag_scope)
 
 
 def _ec2_filters(scope: dict[str, str]) -> dict[str, list[dict[str, list[str]]]]: return {"Filters": [{"Name": f"tag:{key}", "Values": [value]} for key, value in sorted(scope.items())]} if scope else {}
 def _matches(tags: list[dict[str, str]], scope: dict[str, str]) -> bool:
     values = {tag.get("Key"): tag.get("Value") for tag in tags}; return all(values.get(k) == v for k, v in scope.items())
+def _tag_name(tags: list[dict[str, str]]) -> str | None: return next((tag.get("Value") for tag in tags if tag.get("Key") == "Name"), None)
 def _session(profile: str | None, region: str, role_arn: str | None) -> boto3.Session:
     base = boto3.Session(profile_name=profile, region_name=region)
     if not role_arn: return base

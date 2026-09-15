@@ -63,6 +63,13 @@ class TagOnlyImpactRule:
         return None
 
 
+class PublicRdsImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if finding.identity.resource_type == "rds_db_instance" and finding.live and finding.live.attributes.get("publicly_accessible"):
+            return ImpactAssessment(ImpactLevel.HIGH, ImpactLevel.NONE, ImpactLevel.NOT_ASSESSED)
+        return None
+
+
 class UnassessedImpactRule:
     def evaluate(self, finding: Finding) -> ImpactAssessment:
         return ImpactAssessment(
@@ -151,7 +158,7 @@ def remediation_plan(finding: Finding, rules: tuple[RemediationRule, ...] | None
 
 
 def default_impact_rules() -> tuple[ImpactRule, ...]:
-    return (PublicIngressImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
+    return (PublicIngressImpactRule(), PublicRdsImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
 
 
 def default_explanation_rules() -> tuple[ExplanationRule, ...]:
@@ -176,5 +183,11 @@ def readable_resource_type(resource_type: str) -> str:
         "iam_instance_profile": "AWS IAM Instance Profile",
         "route53_hosted_zone": "AWS Route 53 Hosted Zone",
         "route53_record": "AWS Route 53 Record",
+        "nat_gateway": "AWS NAT Gateway",
+        "application_load_balancer": "AWS Application Load Balancer",
+        "target_group": "AWS Load Balancer Target Group",
+        "load_balancer_listener": "AWS Load Balancer Listener",
+        "load_balancer_listener_rule": "AWS Load Balancer Listener Rule",
+        "rds_db_instance": "AWS RDS DB Instance",
     }
     return labels.get(resource_type, f"AWS {resource_type.replace('_', ' ').title()}")
