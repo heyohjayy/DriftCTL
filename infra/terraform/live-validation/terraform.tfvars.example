@@ -1,0 +1,8 @@
+# This file is safe to copy to a local terraform.tfvars file and adjust.
+# Do not commit the local terraform.tfvars file.
+
+aws_region                     = "eu-west-1"
+project_tag                    = "Test"
+validation_prefix              = "driftctl-sprint3"
+private_zone_name              = "driftctl-sprint3.internal"
+enable_ec2_validation_instance = false
