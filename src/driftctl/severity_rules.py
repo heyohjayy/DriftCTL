@@ -155,10 +155,7 @@ class RdsProtectionRegressionRule:
 
 class EcsPublicIpRule:
     def evaluate(self, finding: Finding) -> SeverityDecision | None:
-        if finding.identity.resource_type != "ecs_service" or finding.drift_type not in {DriftType.MODIFIED, DriftType.UNMANAGED}:
-            return None
-        network = finding.live.attributes.get("network_configuration", {}) if finding.live else {}
-        if network.get("assign_public_ip"):
+        if has_new_ecs_public_ip_risk(finding):
             return SeverityDecision(
                 Severity.MODERATE,
                 "EcsPublicIpRule: ECS tasks are configured to receive public IP addresses.",
@@ -266,6 +263,24 @@ def has_dangerous_ingress(rules: list[dict[str, object]]) -> bool:
         if isinstance(from_port, int) and isinstance(to_port, int) and any(from_port <= port <= to_port for port in (22, 3389)):
             return True
     return False
+
+
+def has_new_ecs_public_ip_risk(finding: Finding) -> bool:
+    if finding.identity.resource_type != "ecs_service" or not finding.live:
+        return False
+    live_network = finding.live.attributes.get("network_configuration", {})
+    if not live_network.get("assign_public_ip"):
+        return False
+    if finding.drift_type is DriftType.UNMANAGED:
+        return True
+    if finding.drift_type is not DriftType.MODIFIED:
+        return False
+    change = finding.changes.get("network_configuration")
+    if not change:
+        return False
+    expected_network = change.get("expected") or {}
+    changed_live_network = change.get("live") or {}
+    return changed_live_network.get("assign_public_ip") is True and expected_network.get("assign_public_ip") is not True
 
 
 def _public_access_weakened(expected: object, live: object) -> bool:

@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from driftctl.models import DriftType, Finding
-from driftctl.severity_rules import has_dangerous_ingress
+from driftctl.severity_rules import has_dangerous_ingress, has_new_ecs_public_ip_risk
 
 
 class ImpactLevel(StrEnum):
@@ -70,11 +70,22 @@ class PublicRdsImpactRule:
         return None
 
 
+class EcsScaledToZeroImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if finding.identity.resource_type != "ecs_service" or finding.drift_type is not DriftType.MODIFIED:
+            return None
+        change = finding.changes.get("desired_count")
+        if not change:
+            return None
+        expected, live = change.get("expected"), change.get("live")
+        if type(expected) is int and expected > 0 and type(live) is int and live == 0:
+            return ImpactAssessment(ImpactLevel.NOT_ASSESSED, ImpactLevel.NONE, ImpactLevel.HIGH)
+        return None
+
+
 class EcsPublicIpImpactRule:
     def evaluate(self, finding: Finding) -> ImpactAssessment | None:
-        if finding.identity.resource_type != "ecs_service" or not finding.live:
-            return None
-        if finding.live.attributes.get("network_configuration", {}).get("assign_public_ip"):
+        if has_new_ecs_public_ip_risk(finding):
             return ImpactAssessment(ImpactLevel.LOW, ImpactLevel.LOW, ImpactLevel.NOT_ASSESSED)
         return None
 
@@ -118,9 +129,7 @@ class TagOnlyExplanationRule:
 
 class EcsPublicIpExplanationRule:
     def evaluate(self, finding: Finding) -> FindingExplanation | None:
-        if finding.identity.resource_type != "ecs_service" or not finding.live:
-            return None
-        if finding.live.attributes.get("network_configuration", {}).get("assign_public_ip"):
+        if has_new_ecs_public_ip_risk(finding):
             return FindingExplanation(
                 "The ECS service is configured to assign public IP addresses to its tasks.",
                 "Reachability still depends on routes and security groups, but direct public addressing increases exposure and cost considerations.",
@@ -196,7 +205,7 @@ def remediation_plan(finding: Finding, rules: tuple[RemediationRule, ...] | None
 
 
 def default_impact_rules() -> tuple[ImpactRule, ...]:
-    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
+    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsScaledToZeroImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
 
 
 def default_explanation_rules() -> tuple[ExplanationRule, ...]:
