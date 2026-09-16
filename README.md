@@ -37,14 +37,24 @@ The controlled tests are not the normal operating procedure. In routine use, Dri
 
 The offline demonstration is the fastest way to see the tool work. It uses included fixture files that resemble Terraform state and boto3 responses, so it does not access an AWS account or require credentials.
 
-Python 3.11 or later is required. From the repository directory, create and activate an isolated Python environment:
+Python 3.11 or later is required. After cloning, change into the repository directory before running these commands. They create a `.venv` folder in the current directory, so do not run them from your Windows home directory unless the repository is there.
+
+Create the isolated Python environment:
 
 ```powershell
 python -m venv .venv
 ```
 
+Windows PowerShell can block local activation scripts. Allow this activation script to run in the current PowerShell window only; this does not change your computer's permanent execution-policy setting:
+
 ```powershell
-.venv\Scripts\Activate.ps1
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+Activate the environment:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
 
 Install the project and development dependencies:
