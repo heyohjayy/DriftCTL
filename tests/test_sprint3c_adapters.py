@@ -5,7 +5,7 @@ from driftctl.adapters.boto3_snapshots import adapt_boto3_inventory
 from driftctl.adapters.terraform_state import adapt_terraform_state_with_diagnostics
 from driftctl.detector import detect_drift
 from driftctl.models import DriftType, Severity
-from driftctl.presentation import ImpactLevel, assess_impacts, readable_resource_type
+from driftctl.presentation import ImpactLevel, assess_impacts, explain_finding, readable_resource_type
 from driftctl.severity_rules import classify_finding, default_rules
 
 
@@ -64,6 +64,92 @@ def test_ecs_service_network_change_is_modified_and_public_ip_is_moderate() -> N
     assert "network_configuration" in finding.changes
     assert finding.severity is Severity.MODERATE
     assert "EcsPublicIpRule" in finding.severity_reason
+    assert assess_impacts(finding).security is ImpactLevel.LOW
+    assert "assign public IP addresses" in explain_finding(finding).change
+
+
+def test_desired_count_only_drift_does_not_report_unchanged_public_ip_as_risk() -> None:
+    state = _state()
+    expected_service = next(
+        resource
+        for resource in state["values"]["root_module"]["resources"]
+        if resource["type"] == "aws_ecs_service"
+    )
+    expected_service["values"]["network_configuration"][0]["assign_public_ip"] = True
+    live = _live()
+    live_service = live["ECSServices"][0]
+    live_service["networkConfiguration"]["awsvpcConfiguration"]["assignPublicIp"] = "ENABLED"
+    live_service["desiredCount"] = 3
+
+    findings = detect_drift(
+        adapt_terraform_state_with_diagnostics(state).snapshots,
+        adapt_boto3_inventory(live),
+    )
+    finding = next(item for item in findings if item.identity.resource_type == "ecs_service")
+    classify_finding(finding, default_rules())
+    impact = assess_impacts(finding)
+    explanation = explain_finding(finding)
+
+    assert finding.changes == {"desired_count": {"expected": 2, "live": 3}}
+    assert finding.severity is Severity.MODERATE
+    assert "DefaultModifiedRule" in finding.severity_reason
+    assert finding.remediation.summary == "Reconcile the approved state without applying automatically."
+    assert "differs from Terraform in: desired_count" in explanation.change
+    assert "public IP" not in explanation.change
+    assert (impact.security, impact.cost, impact.availability) == (
+        ImpactLevel.NOT_ASSESSED,
+        ImpactLevel.NOT_ASSESSED,
+        ImpactLevel.NOT_ASSESSED,
+    )
+
+
+def test_ecs_desired_count_one_to_zero_has_high_availability_impact() -> None:
+    state = _state()
+    expected_service = next(
+        resource
+        for resource in state["values"]["root_module"]["resources"]
+        if resource["type"] == "aws_ecs_service"
+    )
+    expected_service["values"]["desired_count"] = 1
+    live = _live()
+    live["ECSServices"][0]["desiredCount"] = 0
+
+    findings = detect_drift(
+        adapt_terraform_state_with_diagnostics(state).snapshots,
+        adapt_boto3_inventory(live),
+    )
+    finding = next(item for item in findings if item.identity.resource_type == "ecs_service")
+    classify_finding(finding, default_rules())
+    impact = assess_impacts(finding)
+
+    assert finding.changes == {"desired_count": {"expected": 1, "live": 0}}
+    assert finding.severity is Severity.MODERATE
+    assert "DefaultModifiedRule" in finding.severity_reason
+    assert (impact.security, impact.cost, impact.availability) == (
+        ImpactLevel.NOT_ASSESSED,
+        ImpactLevel.NONE,
+        ImpactLevel.HIGH,
+    )
+
+
+def test_unmanaged_ecs_service_with_public_ip_keeps_public_ip_guidance() -> None:
+    live = _live()
+    unmanaged = copy.deepcopy(live["ECSServices"][0])
+    unmanaged["serviceName"] = "console-service"
+    unmanaged["serviceArn"] = "arn:aws:ecs:eu-west-1:123456789012:service/platform/console-service"
+    unmanaged["networkConfiguration"]["awsvpcConfiguration"]["assignPublicIp"] = "ENABLED"
+    live["ECSServices"].append(unmanaged)
+
+    findings = detect_drift(
+        adapt_terraform_state_with_diagnostics(_state()).snapshots,
+        adapt_boto3_inventory(live),
+    )
+    finding = next(item for item in findings if item.identity.name == "platform|console-service")
+    classify_finding(finding, default_rules())
+
+    assert finding.drift_type is DriftType.UNMANAGED
+    assert "EcsPublicIpRule" in finding.severity_reason
+    assert "assign public IP addresses" in explain_finding(finding).change
     assert assess_impacts(finding).security is ImpactLevel.LOW
 
 
