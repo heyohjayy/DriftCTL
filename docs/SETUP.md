@@ -1,6 +1,6 @@
 # Manual Setup and Usage Guide
 
-This guide shows you how to install and use Infrastructure Drift Control (DriftCTL) manually from PowerShell. It begins with a safe example that does not use AWS, then explains how to scan a small non-production AWS environment.
+This guide shows you how to install and use Infrastructure Drift Control (DriftCTL) manually from a terminal. It begins with a safe example that does not use AWS, then explains how to scan a small non-production AWS environment. Windows PowerShell commands appear first; Bash and Zsh equivalents are included where shell syntax differs on Linux and macOS.
 
 DriftCTL is read-only. It reads Terraform state and AWS configuration, compares them, writes a report, and suggests what to check next. It does not run `terraform apply`, edit Terraform state, or make changes in AWS.
 
@@ -26,7 +26,7 @@ Install these tools before beginning:
 - **AWS CLI**: needed only when scanning a real AWS environment.
 - **An AWS account or sandbox environment**: needed only for a live scan. Use a personal, learning, or non-production environment. Do not start with production infrastructure.
 
-Check which tools are already installed in PowerShell:
+Check which tools are already installed in your terminal. The following commands work in PowerShell, Bash, and Zsh:
 
 ```powershell
 git --version
@@ -48,7 +48,7 @@ You can complete the safe local example even if Terraform or the AWS CLI is not 
 
 ## 1. Clone the Repository
 
-Open PowerShell in the folder where you keep development projects. Run this command, replacing `<repository-url>` with the HTTPS or SSH address shown under GitHub's **Code** button:
+Open a terminal in the folder where you keep development projects. Run this command, replacing `<repository-url>` with the HTTPS or SSH address shown under GitHub's **Code** button:
 
 ```powershell
 git clone <repository-url>
@@ -80,19 +80,25 @@ Create the virtual environment. This creates a `.venv` folder inside the project
 python -m venv .venv
 ```
 
-Windows may block PowerShell scripts by default. The next command allows the local activation script to run in this PowerShell window only. It does not permanently change your computer's security settings:
+In Windows PowerShell, Windows may block local activation scripts by default. The next command allows the local activation script to run in this PowerShell window only. It does not permanently change your computer's security settings:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-Activate the environment:
+Activate the environment in Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-When activation works, your PowerShell prompt starts with `(.venv)`. Keep this window open while using DriftCTL.
+In Bash or Zsh on Linux or macOS, activate the same environment with:
+
+```bash
+source .venv/bin/activate
+```
+
+When activation works, your terminal prompt starts with `(.venv)`. Keep this terminal open while using DriftCTL.
 
 Update `pip`, the Python package installer:
 
@@ -169,18 +175,26 @@ The full offline demonstration has seven findings, so its evidence is split into
 
 ## 5. Prepare a Safe Live AWS Demonstration
 
-Complete this section only after the offline example and tests work.
+Complete this section only after the offline example and tests work when you are evaluating DriftCTL for the first time.
+
+This section supports two paths:
+
+- **First-time evaluation:** If you are trying out the tool to test its effectiveness, create a small, disposable non-production environment with the supplied Terraform reference below, then use it to confirm that DriftCTL works with your AWS account.
+- **Existing production environment:** To directly run a manual scan on your live, production infrastructure and resources, then do not create test infrastructure. Start at [Configure Read-Only AWS Access](#configure-read-only-aws-access), then use [Run a Live Scan With the Full Command](#run-a-live-scan-with-the-full-command), save a local configuration if needed, and limit the scan to the intended environment tag of your infra.
 
 Use a dedicated AWS sandbox account when possible. If you use one personal account, create a clearly named development environment with small resources that you can safely remove later. Do not point your first live scan at production infrastructure.
 
-### Create Test Infrastructure
+### Create Test Infrastructure for a First-Time Evaluation
 
-Use a separate Terraform working directory for the AWS resources you want to scan. DriftCTL includes a sanitized [live-validation Terraform reference](../infra/terraform/live-validation/README.md) that documents the non-production environment used for this project's controlled tests. You can use that folder as a starting point (`infra/terraform/live-validation/`), or create infrastructure that matches your own learning or non-production needs. A smaller generic example is also available at `infra/terraform/example-infrastructure/`. Terraform source can be version controlled with DriftCTL; Terraform state, local variables, plans, credentials, and generated scan output must remain local.
+Use this subsection only for a first-time evaluation. For an existing production environment, Terraform has already applied the infrastructure you want to inspect, so skip this subsection. Use a separate Terraform working directory for evaluation resources. DriftCTL includes a sanitized [live-validation Terraform reference](../infra/terraform/live-validation/README.md) that documents the non-production environment used for this project's controlled tests. You can use that folder as a starting point (`infra/terraform/live-validation/`), or create infrastructure that matches your own learning or non-production needs. A smaller generic example is also available at `infra/terraform/example-infrastructure/`. Terraform source can be version controlled with DriftCTL; Terraform state, local variables, plans, credentials, and generated scan output must remain local.
 
-The committed live-validation reference contains the retained VPC, public and private subnets, internet gateway, route tables, private network ACL, IAM role and instance profile, optional EC2 fixture, private Route 53 hosted zone, and A record used by this project. Earlier controlled validation also created a NAT gateway, Application Load Balancer with target group and listener, and an RDS DB instance. Those chargeable resources were temporary and have been destroyed, so they are not created by the current reference configuration. Start with only the services that make sense for your own learning or non-production environment.
+The committed live-validation reference contains the retained VPC, public and private subnets, internet gateway, route tables, private network ACL, IAM role and instance profile, optional EC2 fixture, private Route 53 hosted zone, A record, and an opt-in ECS Fargate configuration used by this project. Earlier controlled validation also created a NAT gateway, Application Load Balancer with target group and listener, and an RDS DB instance. Those chargeable resources were temporary and have been destroyed, so they are not created by the current reference configuration. Start with only the services that make sense for your own learning or non-production environment.
 
 > [!NOTE]
 > NAT gateways, load balancers, and databases can incur charges while they exist. Create them only in a short-lived test environment, watch the AWS billing console, and remove them when your validation is complete unless you deliberately choose to retain them.
+
+> [!NOTE]
+> ECS Fargate tasks and CloudWatch Logs can also incur charges while they exist. The ECS validation configuration is opt-in and is intended only for a short-lived, non-production test. The Fargate task receives a public IP solely so this small lab can retrieve its public container image without a NAT gateway; its security group has no inbound rules. This is a validation design, not a production networking recommendation.
 
 Add the same tag to every resource you want DriftCTL to scan. For example:
 
@@ -214,6 +228,8 @@ Run `terraform apply` only after you understand and approve the plan. Terraform 
 
 DriftCTL needs permission to look at AWS resources, but it does not need permission to create, update, or delete them. The repository includes a policy at `infra/iam/driftctl-read-only-policy.json`. This policy lists only the AWS read actions DriftCTL needs for its supported services.
 
+This is the same access configuration used for an existing production environment: attach the policy to the approved scanning identity, then point DriftCTL at the matching applied Terraform project and AWS environment.
+
 For a personal learning or sandbox account, the simplest option is to create a dedicated IAM user used only by DriftCTL. Do not use your AWS root user.
 
 1. In the DriftCTL repository, open `infra/iam/driftctl-read-only-policy.json` and copy its full contents.
@@ -223,7 +239,7 @@ For a personal learning or sandbox account, the simplest option is to create a d
 5. During the permissions step, attach the `InfrastructureDriftControlReadOnly` policy you just created.
 6. Open the new user's **Security credentials** tab. Under **Access keys**, create an access key for **Command Line Interface (CLI)** use. AWS shows the secret access key only once.
 
-If your organisation already uses an IAM role or AWS IAM Identity Center, attach the same policy to the approved role instead. Configure the AWS CLI profile using your organisation's sign-in process. Do not create both an IAM user and a role for the same scan unless your organisation requires it.
+If your organisation already uses an IAM role or AWS IAM Identity Center, attach the same policy to the approved role instead. This is normally the appropriate production approach. Configure the AWS CLI profile using your organisation's sign-in process. Do not create both an IAM user and a role for the same scan unless your organisation requires it.
 
 After creating the access key, configure its credentials as a local AWS CLI profile. Run this command in PowerShell and enter the access key ID, secret access key, default region, and output format when prompted:
 
@@ -250,10 +266,16 @@ The following evidence shows a dedicated read-only profile successfully reading 
 
 ### Run a Live Scan With the Full Command
 
-The command below is the clearest way to see every value DriftCTL needs. Replace the Terraform path, AWS profile, region, and tag with values for your own test environment:
+The command below is the clearest way to see every value DriftCTL needs. *It works for an evaluation environment and for an existing production environment.* Replace the Terraform path, AWS profile, region, and tag with values for the environment you intend to scan. For production, the Terraform path must be the applied project that manages that AWS environment, and the profile must use the approved read-only scanning identity.
 
 ```powershell
 driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\aws-drift-report.md --audit audit\events.jsonl
+```
+
+In Bash or Zsh, use forward slashes and a Unix-style Terraform path:
+
+```bash
+driftctl scan --terraform-dir /path/to/your/terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports/aws-drift-report.md --audit audit/events.jsonl
 ```
 
 > [!NOTE]
@@ -265,7 +287,7 @@ Route 53 automatically creates two records at the root of every hosted zone: an 
 
 ### Optional: Save the Scan Settings in a Configuration File
 
-The full command above shows every setting DriftCTL needs. Typing it every time can become tiring. If you scan the same Terraform environment regularly, store those settings in one small local file named `driftctl.toml`.
+The full command above shows every setting DriftCTL needs. Typing it every time can become tiring. If you scan the same Terraform environment regularly, including a production environment, store those settings in one small local file named `driftctl.toml`.
 
 Put `driftctl.toml` in the top folder of the Terraform project it describes. This is the best place because the file belongs to that one environment, not to the DriftCTL source code. It does not contain credentials. It stores only the Terraform folder, the name of your AWS CLI profile, the AWS region, the tag used to limit the scan, and the report and audit locations.
 
@@ -286,10 +308,16 @@ audit = "driftctl-output/events.jsonl"
 > [!WARNING]
 > Do not put AWS access keys, secret access keys, session tokens, passwords, or other credentials in `driftctl.toml`. The tool rejects configuration keys that look like secrets.
 
-After activating the DriftCTL virtual environment, move into the Terraform project:
+After activating the DriftCTL virtual environment, move into the Terraform project. In Windows PowerShell:
 
 ```powershell
 cd C:\path\to\your\terraform-project
+```
+
+In Bash or Zsh:
+
+```bash
+cd /path/to/your/terraform-project
 ```
 
 Then run the short command:
@@ -306,11 +334,17 @@ You can also run the scan from another folder by giving the full path to the con
 driftctl scan --config C:\path\to\your\terraform-project\driftctl.toml
 ```
 
+In Bash or Zsh:
+
+```bash
+driftctl scan --config /path/to/your/terraform-project/driftctl.toml
+```
+
 The paths inside `driftctl.toml` are based on the location of that file, not the folder currently open in PowerShell. You can still add command options when needed. For example, a `--report` value on the command line replaces the report path saved in the configuration file for that one scan.
 
 ### Limit a Live Scan to One Environment Tag
 
-AWS accounts often contain resources from several projects or environments. The `--tag KEY=VALUE` option tells DriftCTL to look only at resources with a matching tag. You can use more than one `--tag` option when a resource must match several tags.
+AWS accounts often contain resources from several projects or environments. The `--tag KEY=VALUE` option tells DriftCTL to look only at resources with a matching tag. You can use more than one `--tag` option when a resource must match several tags. This is especially important in production, where the selected tag scope should match the environment the team has approved for scanning.
 
 DriftCTL applies the tag filter to both Terraform state and live AWS resources. This means resources outside the chosen environment do not create `missing`, `unmanaged`, or `modified` findings. The report records the active tag scope so you can see exactly what was scanned later.
 
@@ -342,7 +376,7 @@ When your environment contains application-facing resources, a clean baseline ca
 
 ![Clean live baseline with application infrastructure](screenshots/13-sprint3b-clean-live-baseline.png)
 
-## 6. Reference: Controlled Live Drift Validation
+## 6. Optional: Non-Production Controlled Drift Validation
 
 This optional section records the controlled non-production validation used for this project. It proves that DriftCTL can detect real differences between Terraform state and AWS. The exact resource names, IP addresses, tags, and temporary changes belong to this example environment; they are not required steps for every DriftCTL user.
 
@@ -484,7 +518,7 @@ A clean result shows `0` findings and the green `No drift detected` panel. You c
 
 ![Clean scan after remediation](screenshots/11-clean-after-remediation.png)
 
-## 7. Optional: Validate Application Infrastructure Drift
+### Application-Facing Infrastructure Validation
 
 This section documents additional controlled tests for NAT gateways, Application Load Balancers, and RDS DB instances. Use it only when your own Terraform test environment contains equivalent resources. These are examples of how the tool was validated, not changes every DriftCTL user should make.
 
@@ -535,6 +569,56 @@ The scan should show `0` findings and the green `No drift detected` panel. This 
 
 ![Clean scan after application-infrastructure remediation](screenshots/17-sprint3b-clean-after-remediation.png)
 
+### ECS on Fargate Validation
+
+This section records the controlled ECS validation used for this project. It demonstrates that DriftCTL can compare an ECS cluster, task definition, Fargate service, and CloudWatch log group against Terraform's applied state. It is not a production deployment pattern and is not a required step for normal DriftCTL use.
+
+Use the opt-in ECS configuration in `infra/terraform/live-validation/` only in a dedicated non-production environment. It creates a small ECS cluster, task definition, Fargate service, CloudWatch log group, task roles, and a security group with no inbound rules. The service uses a public task IP to retrieve a public image without creating a NAT gateway. Production teams should choose their own network, image, identity, and scaling design.
+
+> [!WARNING]
+> Perform the following AWS changes only with a separate administrative identity, such as the identity used by Terraform. Do not use the `driftctl-readonly` profile. DriftCTL remains read-only; the temporary changes below are deliberately introduced so the scanner can detect them.
+
+Before introducing any change, run `driftctl scan` and confirm a clean baseline with `0` findings.
+
+![Clean ECS Fargate baseline](screenshots/18-sprint3c1-ecs-fargate-clean-baseline.png)
+
+### Test 11: Find a CloudWatch Log Retention Change
+
+With Terraform expecting seven days of retention, temporarily change the log group to one day:
+
+```powershell
+aws logs put-retention-policy --log-group-name "/driftctl/sprint3/ecs" --retention-in-days 1 --region eu-west-1
+```
+
+Run `driftctl scan`. The terminal should show one `modified` `AWS CloudWatch Log Group` finding for `retention_in_days`, normally with `moderate` severity. Restore the Terraform value before continuing:
+
+```powershell
+aws logs put-retention-policy --log-group-name "/driftctl/sprint3/ecs" --retention-in-days 7 --region eu-west-1
+```
+
+![CloudWatch log retention drift](screenshots/19-sprint3c1-cloudwatch-log-retention-drift.png)
+
+### Test 12: Find an ECS Desired-Count Change
+
+Temporarily scale the Fargate service from one task to zero:
+
+```powershell
+aws ecs update-service --cluster driftctl-sprint3-ecs --service driftctl-sprint3-fargate --desired-count 0 --region eu-west-1
+```
+
+Run `driftctl scan`. DriftCTL should report one `modified` `AWS ECS Service` finding for `desired_count`. For this specific change it records `HIGH` availability impact because the service expects a running task but is scaled to zero; security remains `NOT ASSESSED` because the service's workload purpose is not known.
+
+Restore the expected count, wait until the service reports `ACTIVE` with both desired and running counts at `1`, then scan again:
+
+```powershell
+aws ecs update-service --cluster driftctl-sprint3-ecs --service driftctl-sprint3-fargate --desired-count 1 --region eu-west-1
+driftctl scan
+```
+
+![ECS service desired-count drift](screenshots/20-sprint3c1-ecs-service-desired-count-drift.png)
+
+![Clean scan after ECS Fargate remediation](screenshots/21-sprint3c1-ecs-fargate-clean-after-remediation.png)
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -544,5 +628,5 @@ The scan should show `0` findings and the green `No drift detected` panel. This 
 | Terraform state cannot be read | Point DriftCTL at the Terraform working directory that owns the applied state. In that directory, run `terraform show -json` to make sure Terraform can read the state. Do not commit this output because it can contain details about your infrastructure. |
 | `driftctl scan` says it needs a Terraform directory, region, report, or audit path | Make sure `driftctl.toml` is in the current Terraform project folder and includes all required `[scan]` values. You can also use the full command and provide the missing option directly. |
 | A resource is missing from a scoped scan | Check that the resource has every tag listed in your `--tag` options or in the `tags` setting of `driftctl.toml`. Then run `terraform plan` and `terraform apply` if Terraform still needs to add the tag. |
-| A NAT gateway, ALB, or RDS resource is not collected | Update the dedicated read-only policy from `infra/iam/driftctl-read-only-policy.json`, attach the new policy version to the scanning identity, then verify the profile can use the required read APIs. |
+| A NAT gateway, ALB, RDS, ECS, or CloudWatch Logs resource is not collected | Update the dedicated read-only policy from `infra/iam/driftctl-read-only-policy.json`, attach the new policy version to the scanning identity, then verify the profile can use the required read APIs. |
 | The scan is clean but the expected and live counts differ | Read the collection diagnostics. AWS-managed resources, tag-scoped exclusions, and unsupported Terraform resource types can change counts without representing drift. |

@@ -23,5 +23,9 @@ This directory holds the sanitized evidence screenshots used in the project READ
 - `15-sprint3b-rds-deletion-protection-drift.png`: weakened RDS deletion protection detected as severe.
 - `16-sprint3b-private-route-drift.png`: private default route redirected from NAT to internet gateway and detected as severe.
 - `17-sprint3b-clean-after-remediation.png`: final clean scan after application-infrastructure remediation.
+- `18-sprint3c1-ecs-fargate-clean-baseline.png`: clean baseline after the ECS Fargate validation environment is applied.
+- `19-sprint3c1-cloudwatch-log-retention-drift.png`: CloudWatch log retention changed from seven days to one day and detected as moderate drift.
+- `20-sprint3c1-ecs-service-desired-count-drift.png`: Fargate service scaled from one task to zero and detected with high availability impact.
+- `21-sprint3c1-ecs-fargate-clean-after-remediation.png`: final clean scan after the ECS service and CloudWatch Logs settings are restored.
 
-These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, and RDS, plus successful final remediation scans.
+These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, RDS, ECS, and CloudWatch Logs, plus successful final remediation scans.
