@@ -293,7 +293,7 @@ def _log_group(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
         ResourceCategory.OTHER,
         {
             "retention_in_days": v.get("retention_in_days"),
-            "kms_key_id": v.get("kms_key_id"),
+            "kms_key_id": _none_if_blank(v.get("kms_key_id")),
             "log_group_class": v.get("log_group_class") or "STANDARD",
             "tags": v.get("tags", {}),
         },
