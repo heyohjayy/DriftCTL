@@ -73,11 +73,13 @@ Install the project and development dependencies:
 python -m pip install -e ".[dev]"
 ```
 
-Run the offline scan:
+Run the offline scan using the command for your terminal. In Windows PowerShell:
 
 ```powershell
 driftctl scan --expected examples\expected.json --live examples\live.json --report reports\offline-drift-report.md --audit audit\offline-events.jsonl
 ```
+
+In Bash or Zsh on Linux or macOS:
 
 ```bash
 driftctl scan --expected examples/expected.json --live examples/live.json --report reports/offline-drift-report.md --audit audit/offline-events.jsonl
