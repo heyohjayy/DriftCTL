@@ -102,3 +102,44 @@ def test_log_retention_regression_has_conservative_policy_and_display_label() ->
     assert "LogRetentionChangeRule" in finding.severity_reason
     assert assess_impacts(finding).cost is ImpactLevel.LOW
     assert readable_resource_type(finding.identity.resource_type) == "AWS CloudWatch Log Group"
+
+
+def test_blank_terraform_log_group_kms_key_matches_absent_aws_kms_key() -> None:
+    state = _state()
+    log_group = next(
+        resource
+        for resource in state["values"]["root_module"]["resources"]
+        if resource["type"] == "aws_cloudwatch_log_group"
+    )
+    log_group["values"]["kms_key_id"] = ""
+
+    findings = detect_drift(
+        adapt_terraform_state_with_diagnostics(state).snapshots,
+        adapt_boto3_inventory(_live()),
+    )
+
+    assert not any(item.identity.resource_type == "cloudwatch_log_group" for item in findings)
+
+
+def test_real_log_group_kms_key_difference_remains_modified() -> None:
+    state = _state()
+    log_group = next(
+        resource
+        for resource in state["values"]["root_module"]["resources"]
+        if resource["type"] == "aws_cloudwatch_log_group"
+    )
+    log_group["values"]["kms_key_id"] = ""
+    live = _live()
+    live["LogGroups"][0]["kmsKeyId"] = "arn:aws:kms:eu-west-1:123456789012:key/live-key"
+
+    findings = detect_drift(
+        adapt_terraform_state_with_diagnostics(state).snapshots,
+        adapt_boto3_inventory(live),
+    )
+    finding = next(item for item in findings if item.identity.resource_type == "cloudwatch_log_group")
+
+    assert finding.drift_type is DriftType.MODIFIED
+    assert finding.changes["kms_key_id"] == {
+        "expected": None,
+        "live": "arn:aws:kms:eu-west-1:123456789012:key/live-key",
+    }
