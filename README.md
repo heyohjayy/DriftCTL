@@ -63,46 +63,10 @@ The command writes a Markdown report and appends JSONL audit events. This creden
 
 For a complete step-by-step guide to using DriftCTL manually, including safe live AWS testing and evidence screenshots, read [the setup and usage guide](docs/SETUP.md).
 
-## Safe Live AWS Scan
+## Learn More
 
-Use an initialized Terraform working directory with access to the state you intend to inspect. DriftCTL runs only `terraform show -json`; it does not run `init`, `plan`, `apply`, or `refresh`.
-
-Attach [the supplied read-only IAM policy](infra/iam/driftctl-read-only-policy.json) to the collecting principal or assumed role. When using `--role-arn`, the source principal also needs a narrowly scoped `sts:AssumeRole` permission for that role. Copy [the sample environment file](examples/aws-demo.env.example) as a reference for configuration values, but do not store AWS credentials in it.
-
-The following command scans one tagged environment. Replace the Terraform directory, region, and tag with values for your own non-production infrastructure:
-
-```powershell
-driftctl scan `
-  --terraform-dir C:\path\to\your\terraform-project `
-  --profile driftctl-readonly `
-  --region eu-west-1 `
-  --tag Project=Test `
-  --report reports\live-baseline-report.md `
-  --audit audit\live-baseline-events.jsonl
-```
-
-### Reuse a Scan Configuration
-
-The full command is useful because it shows every setting DriftCTL needs. If you scan the same Terraform environment regularly, you can save those settings in one small local file named `driftctl.toml`. This saves you from typing the same long command every time.
-
-Put `driftctl.toml` in the top folder of the Terraform project it describes. The file stores the Terraform folder, AWS CLI profile name, AWS region, tag scope, and report and audit locations. It does not store credentials. Start from [the configuration example](examples/driftctl.toml.example).
-
-After activating the Python environment, move into the Terraform project. When `driftctl.toml` is in that folder, run:
-
-```powershell
-driftctl scan
-```
-
-You can also run the same scan from any directory by giving the configuration file path:
-
-```powershell
-driftctl scan --config C:\path\to\your\terraform-project\driftctl.toml
-```
-
-Paths inside `driftctl.toml` are based on the location of the configuration file, not the folder currently open in the terminal. You can still add command options when needed. For example, `--report` replaces the report path saved in the file for one scan. Never put AWS access keys, secret access keys, session tokens, passwords, or other credentials in this file.
-
-`--expected` and `--terraform-dir` are mutually exclusive. Supplying `--live` keeps the scan offline; omitting it enables AWS collection and requires an explicit `--region`.
-
-Use repeatable `--tag KEY=VALUE` options to restrict a scan to resources that match every supplied tag. The scope is applied to both expected and live snapshots, so resources outside it cannot create missing, unmanaged, or modified findings. The report and audit log record the active scope for later review.
-
-See [the architecture notes](docs/architecture.md) for the processing flow and [the setup guide](docs/SETUP.md) for the full manual workflow.
+- [Setup and usage guide](docs/SETUP.md): the complete manual workflow, from installation and offline evaluation to safe live AWS scans, controlled validation, cleanup, and troubleshooting.
+- [Terraform infrastructure](infra/terraform/README.md): the version-controlled non-production infrastructure reference used for this project's controlled live validation.
+- [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The setup guide explains how to apply it safely.
+- [Architecture notes](docs/architecture.md): how Terraform state, read-only AWS collection, normalization, comparison, reporting, audit history, and remediation guidance fit together.
+- [Evidence index](docs/screenshots/README.md): screenshots from the offline and controlled live-validation demonstrations.

@@ -175,9 +175,9 @@ Use a dedicated AWS sandbox account when possible. If you use one personal accou
 
 ### Create Test Infrastructure
 
-Create a separate Terraform project for the AWS resources you want to scan. Keep this Terraform project outside the DriftCTL repository because it is the environment being inspected, while DriftCTL is the reusable tool doing the inspection.
+Use a separate Terraform working directory for the AWS resources you want to scan. DriftCTL includes a sanitized [live-validation Terraform reference](../infra/terraform/live-validation/README.md) that documents the non-production environment used for this project's controlled tests. You can use that folder as a starting point (`infra/terraform/live-validation/`), or create infrastructure that matches your own learning or non-production needs. A smaller generic example is also available at `infra/terraform/example-infrastructure/`. Terraform source can be version controlled with DriftCTL; Terraform state, local variables, plans, credentials, and generated scan output must remain local.
 
-For the full live validation shown later in this guide, the Terraform project includes an EC2 instance, security groups, a VPC, public and private subnets, an internet gateway, a NAT gateway, route tables, a private network ACL, an IAM role with an instance profile, an internal Application Load Balancer with a target group and listener, an RDS DB instance, a private Route 53 hosted zone, and an A record. Start with only the services that make sense for your own learning or non-production environment.
+The committed live-validation reference contains the retained VPC, public and private subnets, internet gateway, route tables, private network ACL, IAM role and instance profile, optional EC2 fixture, private Route 53 hosted zone, and A record used by this project. Earlier controlled validation also created a NAT gateway, Application Load Balancer with target group and listener, and an RDS DB instance. Those chargeable resources were temporary and have been destroyed, so they are not created by the current reference configuration. Start with only the services that make sense for your own learning or non-production environment.
 
 > [!NOTE]
 > NAT gateways, load balancers, and databases can incur charges while they exist. Create them only in a short-lived test environment, watch the AWS billing console, and remove them when your validation is complete unless you deliberately choose to retain them.
@@ -240,7 +240,7 @@ aws sts get-caller-identity --profile driftctl-readonly
 The first command stores credentials on your computer.
 
 > [!WARNING]
-> Never add access keys, secret access keys, session tokens, passwords, or other credentials to this repository, an `.env` file, a screenshot, or a chat message. If you take a screenshot of this step, cover the full access-key and secret-key values before saving it.
+> Never add access keys, secret access keys, session tokens, passwords, or other credentials to your repository, an `.env` file, a screenshot, or a chat message. If you take a screenshot of this step for your use, cover the full access-key and secret-key values before saving it.
 
 ![Read-only AWS profile configuration and verification](screenshots/04a-read-only-profile-verification.png)
 
