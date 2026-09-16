@@ -15,10 +15,12 @@ By default, this configuration creates the retained validation foundation:
 
 The EC2 fixture is disabled by default. It has no SSH key, no inbound rule, and uses AWS Systems Manager rather than a personal SSH rule when enabled.
 
+The optional ECS on Fargate fixture is also disabled by default. When enabled, it creates one ECS cluster, one small Fargate service, an execution role, a task role, a seven-day CloudWatch Logs group, and a no-inbound task security group. It deliberately does not create a NAT gateway or load balancer. The task receives a public IP only to reach the public container registry without a NAT gateway; its security group has no inbound rules.
+
 The NAT gateway, Elastic IP, Application Load Balancer, target group, listener, and RDS DB instance used in the earlier application-infrastructure validation are deliberately absent. They were destroyed after validation to prevent ongoing charges.
 
 > [!WARNING]
-> This is non-production infrastructure. Review every `terraform plan` before applying it. NAT gateways, load balancers, databases, and running EC2 instances can incur charges. Add those layers only for short-lived validation and destroy them when finished.
+> This is non-production infrastructure. Review every `terraform plan` before applying it. NAT gateways, load balancers, databases, running EC2 instances, Fargate tasks, and CloudWatch Logs can incur charges. Add those layers only for short-lived validation and destroy them when finished.
 
 ## Start Safely
 

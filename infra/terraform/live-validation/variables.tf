@@ -33,3 +33,15 @@ variable "ec2_instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+variable "enable_ecs_fargate_validation" {
+  description = "Whether to create the optional ECS on Fargate validation fixture. This incurs ECS and CloudWatch Logs charges while enabled."
+  type        = bool
+  default     = false
+}
+
+variable "ecs_desired_count" {
+  description = "Number of tasks for the optional ECS on Fargate validation service."
+  type        = number
+  default     = 1
+}
