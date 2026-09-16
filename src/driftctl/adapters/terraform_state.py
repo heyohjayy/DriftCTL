@@ -6,6 +6,14 @@ import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from driftctl.adapters.ecs import (
+    assign_public_ip,
+    capacity_provider_strategy,
+    cluster_settings,
+    container_definitions,
+    runtime_platform,
+    task_definition_ref,
+)
 from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
 from driftctl.models import CollectionDiagnostic, ResourceCategory, ResourceIdentity, ResourceSnapshot
 
@@ -16,6 +24,7 @@ _SUPPORTED = frozenset({
     "aws_network_acl", "aws_network_acl_rule", "aws_network_acl_association", "aws_iam_role", "aws_iam_role_policy_attachment",
     "aws_iam_role_policy", "aws_iam_instance_profile", "aws_route53_zone", "aws_route53_record", "aws_nat_gateway",
     "aws_lb", "aws_alb", "aws_lb_target_group", "aws_lb_listener", "aws_lb_listener_rule", "aws_db_instance",
+    "aws_ecs_cluster", "aws_ecs_task_definition", "aws_ecs_service", "aws_cloudwatch_log_group",
 })
 
 
@@ -42,6 +51,8 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
     target_groups = {v.get("arn"): _named(v, r) for r in resources if r.get("mode") == "managed" and r.get("type") == "aws_lb_target_group" if (v := r.get("values", {}))}
     listeners = {v.get("arn"): _listener_name(v, load_balancers) for r in resources if r.get("mode") == "managed" and r.get("type") == "aws_lb_listener" if (v := r.get("values", {}))}
     listener_tags = {v.get("arn"): load_balancer_tags.get(v.get("load_balancer_arn"), {}) for r in resources if r.get("mode") == "managed" and r.get("type") == "aws_lb_listener" if (v := r.get("values", {}))}
+    ecs_clusters, ecs_cluster_tags = _ecs_cluster_maps(resources)
+    ecs_task_tags = _ecs_task_definition_tags(resources, ecs_cluster_tags)
     snapshots: list[ResourceSnapshot] = []
     for resource in resources:
         if resource.get("mode") != "managed":
@@ -69,6 +80,10 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
             if listener: snapshots.append(_listener_rule(resource, values, listener, listener_tags.get(values.get("listener_arn"), {}), target_groups))
             else: diagnostics.append(CollectionDiagnostic("terraform_state", "Skipped listener rule because its parent listener is not supported in this state.", resource.get("address")))
         elif kind == "aws_db_instance": snapshots.append(_db_instance(resource, values))
+        elif kind == "aws_ecs_cluster": snapshots.append(_ecs_cluster(resource, values))
+        elif kind == "aws_ecs_task_definition": snapshots.append(_ecs_task_definition(resource, values, ecs_task_tags))
+        elif kind == "aws_ecs_service": snapshots.append(_ecs_service(resource, values, ecs_clusters, ecs_cluster_tags, target_groups))
+        elif kind == "aws_cloudwatch_log_group": snapshots.append(_log_group(resource, values))
         elif kind == "aws_route53_record":
             zone_id = values.get("zone_id")
             if zone_id not in zones: diagnostics.append(CollectionDiagnostic("terraform_state", "Skipped Route 53 record because its parent hosted zone is not supported in this state.", resource.get("address")))
@@ -156,6 +171,143 @@ def _json(value: Any) -> Any:
 def _none_if_blank(value: Any) -> Any: return None if value in (None, "") else value
 def _s3(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "s3_bucket", v.get("bucket") or r["name"]), ResourceCategory.STORAGE, {"bucket": v.get("bucket") or v.get("id"), "tags": v.get("tags", {}), "public_access_block": c.get("public_access_block", {}), "encryption": c.get("encryption", {})}, r.get("address"))
 def _instance(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "instance", v.get("tags", {}).get("Name") or v.get("id") or r["name"]), ResourceCategory.COMPUTE, {"instance_type": v.get("instance_type"), "ami": v.get("ami"), "subnet_id": v.get("subnet_id"), "associate_public_ip_address": bool(v.get("associate_public_ip_address")), "security_group_ids": sorted(v.get("vpc_security_group_ids", [])), "tags": v.get("tags", {})}, r.get("address"))
+
+
+def _ecs_cluster_maps(resources: list[dict[str, Any]]) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    names: dict[str, str] = {}
+    tags: dict[str, dict[str, str]] = {}
+    for resource in resources:
+        if resource.get("mode") != "managed" or resource.get("type") != "aws_ecs_cluster":
+            continue
+        values = resource.get("values", {})
+        name = values.get("name") or resource.get("name")
+        for reference in (values.get("arn"), values.get("id"), name):
+            if reference:
+                names[str(reference)] = name
+                tags[str(reference)] = values.get("tags", {})
+    return names, tags
+
+
+def _ecs_cluster(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+    name = v.get("name") or r["name"]
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_cluster", name),
+        ResourceCategory.COMPUTE,
+        {"settings": cluster_settings(v.get("setting")), "tags": v.get("tags", {})},
+        r.get("address"),
+    )
+
+
+def _ecs_task_definition_tags(resources: list[dict[str, Any]], cluster_tags: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    tags: dict[str, dict[str, str]] = {}
+    for resource in resources:
+        if resource.get("mode") != "managed" or resource.get("type") != "aws_ecs_service":
+            continue
+        values = resource.get("values", {})
+        reference = task_definition_ref(values.get("task_definition"))
+        if reference:
+            cluster_ref = str(values.get("cluster") or "default")
+            tags[reference] = values.get("tags", {}) or cluster_tags.get(cluster_ref, {})
+    return tags
+
+
+def _ecs_task_definition(r: dict[str, Any], v: dict[str, Any], inherited_tags: dict[str, dict[str, str]]) -> ResourceSnapshot:
+    identity = task_definition_ref(v.get("arn")) or f"{v.get('family') or r['name']}:{v.get('revision')}"
+    ephemeral = _first(v.get("ephemeral_storage"))
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_task_definition", identity),
+        ResourceCategory.COMPUTE,
+        {
+            "family": v.get("family") or r["name"],
+            "revision": v.get("revision"),
+            "network_mode": v.get("network_mode"),
+            "requires_compatibilities": sorted(v.get("requires_compatibilities", [])),
+            "cpu": _string_or_none(v.get("cpu")),
+            "memory": _string_or_none(v.get("memory")),
+            "execution_role_arn": v.get("execution_role_arn"),
+            "task_role_arn": v.get("task_role_arn"),
+            "runtime_platform": runtime_platform(v.get("runtime_platform")),
+            "ephemeral_storage_gib": ephemeral.get("size_in_gib"),
+            "container_definitions": container_definitions(v.get("container_definitions")),
+            "tags": v.get("tags", {}) or inherited_tags.get(identity, {}),
+        },
+        r.get("address"),
+    )
+
+
+def _ecs_service(
+    r: dict[str, Any],
+    v: dict[str, Any],
+    clusters: dict[str, str],
+    cluster_tags: dict[str, dict[str, str]],
+    target_groups: dict[str, str],
+) -> ResourceSnapshot:
+    cluster_ref = str(v.get("cluster") or "default")
+    cluster = clusters.get(cluster_ref, cluster_ref.rsplit("/", 1)[-1])
+    network = _first(v.get("network_configuration"))
+    deployment = _first(v.get("deployment_circuit_breaker"))
+    tags = v.get("tags", {}) or cluster_tags.get(cluster_ref, {})
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_service", f"{cluster}|{v.get('name') or r['name']}"),
+        ResourceCategory.COMPUTE,
+        {
+            "cluster": cluster,
+            "task_definition": task_definition_ref(v.get("task_definition")),
+            "desired_count": v.get("desired_count"),
+            "launch_type": v.get("launch_type"),
+            "capacity_provider_strategy": capacity_provider_strategy(v.get("capacity_provider_strategy")),
+            "network_configuration": {
+                "subnets": sorted(network.get("subnets", [])),
+                "security_groups": sorted(network.get("security_groups", [])),
+                "assign_public_ip": assign_public_ip(network.get("assign_public_ip")),
+            },
+            "deployment": {
+                "minimum_healthy_percent": v.get("deployment_minimum_healthy_percent", 100),
+                "maximum_percent": v.get("deployment_maximum_percent", 200),
+                "circuit_breaker_enable": deployment.get("enable", False),
+                "circuit_breaker_rollback": deployment.get("rollback", False),
+            },
+            "scheduling_strategy": v.get("scheduling_strategy") or "REPLICA",
+            "enable_execute_command": bool(v.get("enable_execute_command")),
+            "load_balancers": _ecs_load_balancers(v.get("load_balancer", []), target_groups),
+            "tags": tags,
+        },
+        r.get("address"),
+    )
+
+
+def _ecs_load_balancers(values: list[dict[str, Any]], target_groups: dict[str, str]) -> list[dict[str, Any]]:
+    return sorted(
+        ({
+            "target_group": target_groups.get(item.get("target_group_arn"), item.get("target_group_arn")),
+            "container_name": item.get("container_name"),
+            "container_port": item.get("container_port"),
+        } for item in values),
+        key=repr,
+    )
+
+
+def _log_group(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "cloudwatch_log_group", v.get("name") or r["name"]),
+        ResourceCategory.OTHER,
+        {
+            "retention_in_days": v.get("retention_in_days"),
+            "kms_key_id": v.get("kms_key_id"),
+            "log_group_class": v.get("log_group_class") or "STANDARD",
+            "tags": v.get("tags", {}),
+        },
+        r.get("address"),
+    )
+
+
+def _first(value: Any) -> dict[str, Any]:
+    if isinstance(value, list): return value[0] if value else {}
+    return value if isinstance(value, dict) else {}
+
+
+def _string_or_none(value: Any) -> str | None:
+    return None if value in (None, "") else str(value)
 
 
 def _named(v: dict[str, Any], r: dict[str, Any]) -> str: return v.get("tags", {}).get("Name") or v.get("name") or v.get("id") or r["name"]

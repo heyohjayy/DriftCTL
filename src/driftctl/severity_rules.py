@@ -153,6 +153,43 @@ class RdsProtectionRegressionRule:
         return None
 
 
+class EcsPublicIpRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.identity.resource_type != "ecs_service" or finding.drift_type not in {DriftType.MODIFIED, DriftType.UNMANAGED}:
+            return None
+        network = finding.live.attributes.get("network_configuration", {}) if finding.live else {}
+        if network.get("assign_public_ip"):
+            return SeverityDecision(
+                Severity.MODERATE,
+                "EcsPublicIpRule: ECS tasks are configured to receive public IP addresses.",
+                RemediationRecommendation(
+                    "Validate that direct task internet reachability is required.",
+                    ("Review subnet routes and security groups.", "Prefer private task networking when the service design permits it.", "Reconcile through a reviewed Terraform plan after approval."),
+                ),
+            )
+        return None
+
+
+class LogRetentionChangeRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if finding.identity.resource_type != "cloudwatch_log_group" or finding.drift_type is not DriftType.MODIFIED:
+            return None
+        change = finding.changes.get("retention_in_days")
+        if not change:
+            return None
+        expected, live = change.get("expected"), change.get("live")
+        weakened = expected is not None and (live is None or isinstance(live, int) and live < expected)
+        severity = Severity.MODERATE if weakened else Severity.MINOR
+        return SeverityDecision(
+            severity,
+            "LogRetentionChangeRule: CloudWatch log retention differs from the approved Terraform setting.",
+            RemediationRecommendation(
+                "Confirm the required operational and compliance retention period.",
+                ("Estimate storage and investigation-history impact.", "Reconcile retention through a reviewed Terraform plan after approval."),
+            ),
+        )
+
+
 class MissingResourceRule:
     def evaluate(self, finding: Finding) -> SeverityDecision | None:
         if finding.drift_type is DriftType.MISSING:
@@ -242,7 +279,7 @@ def _generic_remediation() -> RemediationRecommendation:
 
 
 def default_rules() -> list[SeverityRule]:
-    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
+    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), EcsPublicIpRule(), LogRetentionChangeRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
 
 
 def _has_administrator_access(policy_arns: list[str]) -> bool:

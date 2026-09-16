@@ -5,6 +5,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from driftctl.adapters.ecs import (
+    assign_public_ip,
+    capacity_provider_strategy,
+    cluster_settings,
+    container_definitions,
+    runtime_platform,
+    task_definition_ref,
+)
 from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
 from driftctl.models import ResourceCategory, ResourceIdentity, ResourceSnapshot
 
@@ -36,6 +44,14 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
         listener_name = listener_names.get(listener_arn)
         if listener_name: snapshots += [_listener_rule(x, listener_name, load_balancer_tags.get(_listener_load_balancer_arn(listener_arn, payload), {}), target_group_names) for x in rules if not x.get("IsDefault")]
     snapshots += [_db_instance(x) for x in payload.get("DBInstances", [])]
+    raw_clusters = payload.get("ECSClusters", [])
+    cluster_names = {x.get("clusterArn"): x.get("clusterName") for x in raw_clusters}
+    cluster_tags = {x.get("clusterArn"): _tags(x.get("tags", x.get("Tags", []))) for x in raw_clusters}
+    task_tags = _ecs_task_definition_tags(payload.get("ECSServices", []), cluster_tags)
+    snapshots += [_ecs_cluster(x) for x in raw_clusters]
+    snapshots += [_ecs_task_definition(x, task_tags) for x in payload.get("ECSTaskDefinitions", [])]
+    snapshots += [_ecs_service(x, cluster_names, cluster_tags, target_group_names) for x in payload.get("ECSServices", [])]
+    snapshots += [_log_group(x) for x in payload.get("LogGroups", [])]
     snapshots += [_role(x) for x in payload.get("IamRoles", [])]
     snapshots += [_profile(x) for x in payload.get("InstanceProfiles", [])]
     zones = [_zone(x) for x in payload.get("HostedZones", [])]; snapshots += zones
@@ -46,7 +62,9 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     return snapshots
 
 
-def _tags(tags: list[dict[str, str]]) -> dict[str, str]: return {x["Key"]: x["Value"] for x in tags if "Key" in x and "Value" in x}
+def _tags(tags: list[dict[str, str]] | dict[str, str]) -> dict[str, str]:
+    if isinstance(tags, dict): return dict(tags)
+    return {(x.get("Key") or x.get("key")): (x.get("Value") or x.get("value", "")) for x in tags if x.get("Key") or x.get("key")}
 def _name(tags: dict[str, str], fallback: str) -> str: return tags.get("Name") or fallback
 def _network(raw: dict[str, Any], kind: str, attrs: dict[str, Any]) -> ResourceSnapshot:
     tags = attrs.get("tags", {}); fallback = raw.get("VpcId") or raw.get("SubnetId") or raw.get("InternetGatewayId") or raw.get("RouteTableId") or raw.get("NetworkAclId") or "unknown"; return ResourceSnapshot(ResourceIdentity("aws", kind, _name(tags, fallback)), ResourceCategory.NETWORKING, attrs)
@@ -100,6 +118,114 @@ def _conditions_live(conditions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(values, key=repr)
 def _db_instance(x: dict[str, Any]) -> ResourceSnapshot:
     tags = _tags(x.get("Tags", [])); return ResourceSnapshot(ResourceIdentity("aws", "rds_db_instance", _name(tags, x.get("DBInstanceIdentifier", "unknown"))), ResourceCategory.DATABASE, {"engine": x.get("Engine"), "engine_version": x.get("EngineVersion"), "instance_class": x.get("DBInstanceClass"), "allocated_storage": x.get("AllocatedStorage"), "storage_type": x.get("StorageType"), "storage_encrypted": bool(x.get("StorageEncrypted")), "publicly_accessible": bool(x.get("PubliclyAccessible")), "vpc_security_group_ids": sorted(group.get("VpcSecurityGroupId") for group in x.get("VpcSecurityGroups", []) if group.get("VpcSecurityGroupId")), "db_subnet_group_name": x.get("DBSubnetGroup", {}).get("DBSubnetGroupName"), "backup_retention_period": x.get("BackupRetentionPeriod"), "deletion_protection": bool(x.get("DeletionProtection")), "multi_az": bool(x.get("MultiAZ")), "port": x.get("Endpoint", {}).get("Port") or x.get("Port"), "copy_tags_to_snapshot": bool(x.get("CopyTagsToSnapshot")), "tags": tags})
+
+
+def _ecs_cluster(x: dict[str, Any]) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_cluster", x.get("clusterName") or str(x.get("clusterArn", "unknown")).rsplit("/", 1)[-1]),
+        ResourceCategory.COMPUTE,
+        {"settings": cluster_settings(x.get("settings")), "tags": _tags(x.get("tags", x.get("Tags", [])))},
+    )
+
+
+def _ecs_task_definition_tags(services: list[dict[str, Any]], cluster_tags: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    tags: dict[str, dict[str, str]] = {}
+    for service in services:
+        reference = task_definition_ref(service.get("taskDefinition"))
+        if reference:
+            own_tags = _tags(service.get("tags", service.get("Tags", [])))
+            tags[reference] = own_tags or cluster_tags.get(service.get("clusterArn"), {})
+    return tags
+
+
+def _ecs_task_definition(x: dict[str, Any], inherited_tags: dict[str, dict[str, str]]) -> ResourceSnapshot:
+    ephemeral = x.get("ephemeralStorage") or {}
+    identity = task_definition_ref(x.get("taskDefinitionArn")) or f"{x.get('family')}:{x.get('revision')}"
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_task_definition", identity),
+        ResourceCategory.COMPUTE,
+        {
+            "family": x.get("family"),
+            "revision": x.get("revision"),
+            "network_mode": x.get("networkMode"),
+            "requires_compatibilities": sorted(x.get("requiresCompatibilities", [])),
+            "cpu": _string_or_none(x.get("cpu")),
+            "memory": _string_or_none(x.get("memory")),
+            "execution_role_arn": x.get("executionRoleArn"),
+            "task_role_arn": x.get("taskRoleArn"),
+            "runtime_platform": runtime_platform(x.get("runtimePlatform")),
+            "ephemeral_storage_gib": ephemeral.get("sizeInGiB"),
+            "container_definitions": container_definitions(x.get("containerDefinitions")),
+            "tags": _tags(x.get("tags", x.get("Tags", []))) or inherited_tags.get(identity, {}),
+        },
+    )
+
+
+def _ecs_service(
+    x: dict[str, Any],
+    cluster_names: dict[str, str],
+    cluster_tags: dict[str, dict[str, str]],
+    target_groups: dict[str, str],
+) -> ResourceSnapshot:
+    cluster_ref = x.get("clusterArn") or x.get("cluster") or "default"
+    cluster = cluster_names.get(cluster_ref, str(cluster_ref).rsplit("/", 1)[-1])
+    network = x.get("networkConfiguration", {}).get("awsvpcConfiguration", {})
+    deployment = x.get("deploymentConfiguration", {})
+    tags = _tags(x.get("tags", x.get("Tags", []))) or cluster_tags.get(cluster_ref, {})
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_service", f"{cluster}|{x.get('serviceName')}"),
+        ResourceCategory.COMPUTE,
+        {
+            "cluster": cluster,
+            "task_definition": task_definition_ref(x.get("taskDefinition")),
+            "desired_count": x.get("desiredCount"),
+            "launch_type": x.get("launchType"),
+            "capacity_provider_strategy": capacity_provider_strategy(x.get("capacityProviderStrategy")),
+            "network_configuration": {
+                "subnets": sorted(network.get("subnets", [])),
+                "security_groups": sorted(network.get("securityGroups", [])),
+                "assign_public_ip": assign_public_ip(network.get("assignPublicIp")),
+            },
+            "deployment": {
+                "minimum_healthy_percent": deployment.get("minimumHealthyPercent", 100),
+                "maximum_percent": deployment.get("maximumPercent", 200),
+                "circuit_breaker_enable": deployment.get("deploymentCircuitBreaker", {}).get("enable", False),
+                "circuit_breaker_rollback": deployment.get("deploymentCircuitBreaker", {}).get("rollback", False),
+            },
+            "scheduling_strategy": x.get("schedulingStrategy") or "REPLICA",
+            "enable_execute_command": bool(x.get("enableExecuteCommand")),
+            "load_balancers": _ecs_load_balancers_live(x.get("loadBalancers", []), target_groups),
+            "tags": tags,
+        },
+    )
+
+
+def _ecs_load_balancers_live(values: list[dict[str, Any]], target_groups: dict[str, str]) -> list[dict[str, Any]]:
+    return sorted(
+        ({
+            "target_group": target_groups.get(item.get("targetGroupArn"), item.get("targetGroupArn")),
+            "container_name": item.get("containerName"),
+            "container_port": item.get("containerPort"),
+        } for item in values),
+        key=repr,
+    )
+
+
+def _log_group(x: dict[str, Any]) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "cloudwatch_log_group", x.get("logGroupName", "unknown")),
+        ResourceCategory.OTHER,
+        {
+            "retention_in_days": x.get("retentionInDays"),
+            "kms_key_id": x.get("kmsKeyId"),
+            "log_group_class": x.get("logGroupClass") or "STANDARD",
+            "tags": _tags(x.get("tags", x.get("Tags", {}))),
+        },
+    )
+
+
+def _string_or_none(value: Any) -> str | None:
+    return None if value in (None, "") else str(value)
 
 
 def _route_table(x: dict[str, Any]) -> ResourceSnapshot:

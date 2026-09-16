@@ -70,6 +70,22 @@ class PublicRdsImpactRule:
         return None
 
 
+class EcsPublicIpImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if finding.identity.resource_type != "ecs_service" or not finding.live:
+            return None
+        if finding.live.attributes.get("network_configuration", {}).get("assign_public_ip"):
+            return ImpactAssessment(ImpactLevel.LOW, ImpactLevel.LOW, ImpactLevel.NOT_ASSESSED)
+        return None
+
+
+class LogRetentionImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if finding.identity.resource_type == "cloudwatch_log_group" and "retention_in_days" in finding.changes:
+            return ImpactAssessment(ImpactLevel.NOT_ASSESSED, ImpactLevel.LOW, ImpactLevel.NONE)
+        return None
+
+
 class UnassessedImpactRule:
     def evaluate(self, finding: Finding) -> ImpactAssessment:
         return ImpactAssessment(
@@ -96,6 +112,28 @@ class TagOnlyExplanationRule:
             return FindingExplanation(
                 "Only resource tags differ from the Terraform inventory.",
                 "Metadata drift can affect ownership, cost allocation, and operational governance.",
+            )
+        return None
+
+
+class EcsPublicIpExplanationRule:
+    def evaluate(self, finding: Finding) -> FindingExplanation | None:
+        if finding.identity.resource_type != "ecs_service" or not finding.live:
+            return None
+        if finding.live.attributes.get("network_configuration", {}).get("assign_public_ip"):
+            return FindingExplanation(
+                "The ECS service is configured to assign public IP addresses to its tasks.",
+                "Reachability still depends on routes and security groups, but direct public addressing increases exposure and cost considerations.",
+            )
+        return None
+
+
+class LogRetentionExplanationRule:
+    def evaluate(self, finding: Finding) -> FindingExplanation | None:
+        if finding.identity.resource_type == "cloudwatch_log_group" and "retention_in_days" in finding.changes:
+            return FindingExplanation(
+                "The CloudWatch log retention period differs from Terraform.",
+                "This can change investigation history, compliance posture, and retained-log storage cost.",
             )
         return None
 
@@ -158,11 +196,11 @@ def remediation_plan(finding: Finding, rules: tuple[RemediationRule, ...] | None
 
 
 def default_impact_rules() -> tuple[ImpactRule, ...]:
-    return (PublicIngressImpactRule(), PublicRdsImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
+    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
 
 
 def default_explanation_rules() -> tuple[ExplanationRule, ...]:
-    return (PublicIngressExplanationRule(), TagOnlyExplanationRule(), GenericExplanationRule())
+    return (PublicIngressExplanationRule(), EcsPublicIpExplanationRule(), LogRetentionExplanationRule(), TagOnlyExplanationRule(), GenericExplanationRule())
 
 
 def default_remediation_rules() -> tuple[RemediationRule, ...]:
@@ -189,5 +227,9 @@ def readable_resource_type(resource_type: str) -> str:
         "load_balancer_listener": "AWS Load Balancer Listener",
         "load_balancer_listener_rule": "AWS Load Balancer Listener Rule",
         "rds_db_instance": "AWS RDS DB Instance",
+        "ecs_cluster": "AWS ECS Cluster",
+        "ecs_task_definition": "AWS ECS Task Definition",
+        "ecs_service": "AWS ECS Service",
+        "cloudwatch_log_group": "AWS CloudWatch Log Group",
     }
     return labels.get(resource_type, f"AWS {resource_type.replace('_', ' ').title()}")

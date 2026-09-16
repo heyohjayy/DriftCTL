@@ -12,9 +12,20 @@ class AwsCollectionError(RuntimeError): pass
 
 
 class AwsInventoryCollector:
-    def __init__(self, ec2_client: Any, s3_client: Any, iam_client: Any | None = None, route53_client: Any | None = None, elbv2_client: Any | None = None, rds_client: Any | None = None) -> None:
+    def __init__(
+        self,
+        ec2_client: Any,
+        s3_client: Any,
+        iam_client: Any | None = None,
+        route53_client: Any | None = None,
+        elbv2_client: Any | None = None,
+        rds_client: Any | None = None,
+        ecs_client: Any | None = None,
+        logs_client: Any | None = None,
+    ) -> None:
         self.ec2_client, self.s3_client, self.iam_client, self.route53_client = ec2_client, s3_client, iam_client, route53_client
         self.elbv2_client, self.rds_client = elbv2_client, rds_client
+        self.ecs_client, self.logs_client = ecs_client, logs_client
         self.diagnostics: list[dict[str, str]] = []
 
     def collect(self, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
@@ -35,10 +46,13 @@ class AwsInventoryCollector:
                 "HostedZones": [], "RecordSets": {}, "LoadBalancers": [], "TargetGroups": [], "TargetGroupReferences": {},
                 "Listeners": {}, "ListenerRules": {},
                 "DBInstances": self._db_instances(scope) if self.rds_client else [],
+                "ECSClusters": [], "ECSTaskDefinitions": [], "ECSServices": [],
+                "LogGroups": self._log_groups(scope) if self.logs_client else [],
                 "CollectionDiagnostics": self.diagnostics,
             }
             if self.route53_client: inventory["HostedZones"], inventory["RecordSets"] = self._zones(scope)
             if self.elbv2_client: inventory.update(self._load_balancing(scope))
+            if self.ecs_client: inventory.update(self._ecs(scope))
             return inventory
         except (BotoCoreError, ClientError) as error:
             raise AwsCollectionError(f"Read-only AWS inventory collection failed: {error}") from error
@@ -149,6 +163,79 @@ class AwsInventoryCollector:
                 if _matches(item["Tags"], scope): values.append(item)
         return values
 
+    def _ecs(self, scope: dict[str, str]) -> dict[str, list[dict[str, Any]]]:
+        cluster_arns = [
+            arn
+            for page in self.ecs_client.get_paginator("list_clusters").paginate()
+            for arn in page.get("clusterArns", [])
+        ]
+        all_clusters: list[dict[str, Any]] = []
+        for start in range(0, len(cluster_arns), 100):
+            response = self.ecs_client.describe_clusters(
+                clusters=cluster_arns[start:start + 100], include=["TAGS", "SETTINGS"]
+            )
+            all_clusters.extend(response.get("clusters", []))
+        cluster_by_arn = {cluster["clusterArn"]: cluster for cluster in all_clusters}
+        clusters = [cluster for cluster in all_clusters if _matches(_ecs_tags(cluster), scope)]
+
+        services: list[dict[str, Any]] = []
+        inherited_task_tags: dict[str, list[dict[str, str]]] = {}
+        for cluster_arn in cluster_arns:
+            service_arns = [
+                arn
+                for page in self.ecs_client.get_paginator("list_services").paginate(cluster=cluster_arn)
+                for arn in page.get("serviceArns", [])
+            ]
+            for start in range(0, len(service_arns), 10):
+                response = self.ecs_client.describe_services(
+                    cluster=cluster_arn,
+                    services=service_arns[start:start + 10],
+                    include=["TAGS"],
+                )
+                for service in response.get("services", []):
+                    own_tags = _ecs_tags(service)
+                    effective_tags = own_tags or _ecs_tags(cluster_by_arn.get(cluster_arn, {}))
+                    if not _matches(effective_tags, scope):
+                        continue
+                    item = dict(service)
+                    item["tags"] = effective_tags
+                    services.append(item)
+                    if item.get("taskDefinition"):
+                        inherited_task_tags[item["taskDefinition"]] = effective_tags
+                        inherited_task_tags[_task_definition_family(item["taskDefinition"])] = effective_tags
+
+        active_definition_arns = [
+            arn
+            for page in self.ecs_client.get_paginator("list_task_definitions").paginate(status="ACTIVE")
+            for arn in page.get("taskDefinitionArns", [])
+        ]
+        definition_arns = _task_definition_arns_for_comparison(
+            active_definition_arns,
+            {service["taskDefinition"] for service in services if service.get("taskDefinition")},
+        )
+        task_definitions: list[dict[str, Any]] = []
+        for arn in definition_arns:
+            response = self.ecs_client.describe_task_definition(taskDefinition=arn, include=["TAGS"])
+            definition = dict(response["taskDefinition"])
+            own_tags = _ecs_tags(response)
+            family = _task_definition_family(arn)
+            effective_tags = own_tags or inherited_task_tags.get(arn, []) or inherited_task_tags.get(family, [])
+            if _matches(effective_tags, scope):
+                definition["tags"] = effective_tags
+                task_definitions.append(definition)
+        return {"ECSClusters": clusters, "ECSTaskDefinitions": task_definitions, "ECSServices": services}
+
+    def _log_groups(self, scope: dict[str, str]) -> list[dict[str, Any]]:
+        groups: list[dict[str, Any]] = []
+        for page in self.logs_client.get_paginator("describe_log_groups").paginate():
+            for group in page.get("logGroups", []):
+                item = dict(group)
+                arn = item.get("logGroupArn") or str(item.get("arn", "")).removesuffix(":*")
+                item["tags"] = self.logs_client.list_tags_for_resource(resourceArn=arn).get("tags", {})
+                if _matches(item["tags"], scope):
+                    groups.append(item)
+        return groups
+
 
 def collect_live_inventory(profile: str | None, region: str, role_arn: str | None, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
     session = _session(profile, region, role_arn)
@@ -159,12 +246,35 @@ def collect_live_inventory(profile: str | None, region: str, role_arn: str | Non
         session.client("route53"),
         session.client("elbv2", region_name=region),
         session.client("rds", region_name=region),
+        session.client("ecs", region_name=region),
+        session.client("logs", region_name=region),
     ).collect(tag_scope)
 
 
 def _ec2_filters(scope: dict[str, str]) -> dict[str, list[dict[str, list[str]]]]: return {"Filters": [{"Name": f"tag:{key}", "Values": [value]} for key, value in sorted(scope.items())]} if scope else {}
-def _matches(tags: list[dict[str, str]], scope: dict[str, str]) -> bool:
-    values = {tag.get("Key"): tag.get("Value") for tag in tags}; return all(values.get(k) == v for k, v in scope.items())
+def _matches(tags: list[dict[str, str]] | dict[str, str], scope: dict[str, str]) -> bool:
+    values = tags if isinstance(tags, dict) else {
+        tag.get("Key") or tag.get("key"): tag.get("Value", tag.get("value")) for tag in tags
+    }
+    return all(values.get(k) == v for k, v in scope.items())
+def _ecs_tags(value: dict[str, Any]) -> list[dict[str, str]]:
+    return value.get("tags", value.get("Tags", []))
+def _task_definition_family(arn: str) -> str:
+    return arn.rsplit("/", 1)[-1].rsplit(":", 1)[0]
+def _task_definition_arns_for_comparison(arns: list[str], referenced_arns: set[str]) -> list[str]:
+    latest: dict[str, tuple[int, str]] = {}
+    for arn in arns:
+        family_revision = arn.rsplit("/", 1)[-1]
+        family, separator, revision = family_revision.rpartition(":")
+        if not separator or not revision.isdigit():
+            continue
+        candidate = (int(revision), arn)
+        if family not in latest or candidate[0] > latest[family][0]:
+            latest[family] = candidate
+    referenced_families = {_task_definition_family(arn) for arn in referenced_arns}
+    selected = set(referenced_arns)
+    selected.update(item[1] for family, item in latest.items() if family not in referenced_families)
+    return sorted(selected)
 def _tag_name(tags: list[dict[str, str]]) -> str | None: return next((tag.get("Value") for tag in tags if tag.get("Key") == "Name"), None)
 def _session(profile: str | None, region: str, role_arn: str | None) -> boto3.Session:
     base = boto3.Session(profile_name=profile, region_name=region)
