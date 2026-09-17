@@ -34,6 +34,61 @@ The optional controlled-validation sections in the setup guide document how this
 > [!NOTE]
 > Current coverage boundaries: DriftCTL supports Application Load Balancers, but not Network or Gateway Load Balancers. It does not evaluate target registration or runtime target health. RDS coverage is limited to DB instances, not Aurora clusters. When the tool cannot determine a reliable impact for a difference, it reports `NOT ASSESSED` instead of overstating risk.
 
+## How DriftCTL Works
+
+Terraform establishes the intended environment. DriftCTL later compares Terraform's applied state with the configuration AWS reports, without changing either one.
+
+```text
+Terraform configuration
+        |
+        v
+terraform plan -> human review and approval -> terraform apply
+                                                   |
+                          +------------------------+------------------------+
+                          |                                                 |
+                          v                                                 v
+             Terraform state (expected)                       Live AWS environment
+                          |                                                 |
+                          +------------------------+------------------------+
+                                                   |
+                                                   v
+                                  DriftCTL scan coordinator (read-only)
+                                                   |
+                  +--------------------------------+--------------------------------+
+                  |                                                                 |
+                  v                                                                 v
+     Terraform CLI loader: terraform show -json                    AWS collector: Describe/List/Get APIs
+                  |                                                                 |
+                  v                                                                 v
+     Terraform-state adapter -> expected ResourceSnapshots     boto3 adapter -> live ResourceSnapshots
+                  |                                                                 |
+                  +--------------------------------+--------------------------------+
+                                                   |
+                                                   v
+                             Tag-scope filtering and collection diagnostics
+                                                   |
+                                                   v
+                        Drift detector: missing | unmanaged | modified differences
+                                                   |
+                                                   v
+                        Severity, impact, explanation, and remediation policies
+                                                   |
+                          +------------------------+------------------------+
+                          |                                                 |
+                          v                                                 v
+          Markdown report grouped by category and severity     Append-only JSONL audit history
+                          |                                                 |
+                          +------------------------+------------------------+
+                                                   |
+                                                   v
+                              Human review and approved remediation
+                        Terraform change or AWS correction; never automatic
+```
+
+Today, an engineer starts the scan manually from the command line. Planned Jenkins and GitHub Actions automation will call the same read-only scan coordinator; they do not change the comparison, risk, reporting, or remediation boundaries.
+
+The Terraform and boto3 adapters convert provider-specific data into common `ResourceSnapshot` objects. The detector compares those normalized snapshots rather than raw Terraform state or AWS API responses. This separation keeps collection logic, comparison logic, and reporting policies independent.
+
 ## Quick Start
 
 The offline demonstration is the fastest way to see the tool work. It uses included fixture files that resemble Terraform state and boto3 responses, so it does not access an AWS account or require credentials.
@@ -94,5 +149,4 @@ For a complete step-by-step guide to using DriftCTL manually, including safe liv
 - [Setup and usage guide](docs/SETUP.md): the complete manual workflow, from installation and offline evaluation to safe live AWS scans, controlled validation, cleanup, and troubleshooting.
 - [Terraform infrastructure](infra/terraform/README.md): the version-controlled non-production infrastructure reference used for this project's controlled live validation.
 - [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The setup guide explains how to apply it safely.
-- [Architecture notes](docs/architecture.md): how Terraform state, read-only AWS collection, normalization, comparison, reporting, audit history, and remediation guidance fit together.
 - [Evidence index](docs/screenshots/README.md): screenshots from the offline and controlled live-validation demonstrations.
