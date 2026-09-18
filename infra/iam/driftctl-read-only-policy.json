@@ -41,6 +41,7 @@
       "Sid": "DescribeEcsInventory",
       "Effect": "Allow",
       "Action": [
+        "ecs:DescribeCapacityProviders",
         "ecs:DescribeClusters",
         "ecs:DescribeServices",
         "ecs:DescribeTaskDefinition",
