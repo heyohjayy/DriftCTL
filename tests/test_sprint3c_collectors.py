@@ -44,6 +44,7 @@ def test_ecs_collection_paginates_and_applies_direct_and_inherited_tag_scope() -
         {"taskDefinition": {"taskDefinitionArn": task, "containerDefinitions": [], "family": "web", "revision": 1, "networkMode": "awsvpc", "status": "ACTIVE", "requiresAttributes": [], "compatibilities": ["EC2", "FARGATE"], "requiresCompatibilities": ["FARGATE"], "cpu": "256", "memory": "512"}, "tags": []},
         {"taskDefinition": task, "include": ["TAGS"]},
     )
+    stubber.add_response("describe_capacity_providers", {"capacityProviders": []}, {"include": ["TAGS"]})
 
     with stubber:
         inventory = AwsInventoryCollector(None, None, ecs_client=ecs)._ecs({"Project": "Test"})
@@ -68,6 +69,7 @@ def test_ecs_collection_excludes_out_of_scope_tagged_service_and_task_definition
     stubber.add_response("describe_services", {"services": [{"serviceArn": service, "serviceName": "other", "clusterArn": cluster, "taskDefinition": task, "desiredCount": 1, "runningCount": 1, "pendingCount": 0, "tags": [{"key": "Project", "value": "Other"}]}]}, {"cluster": cluster, "services": [service], "include": ["TAGS"]})
     stubber.add_response("list_task_definitions", {"taskDefinitionArns": [task]}, {"status": "ACTIVE"})
     stubber.add_response("describe_task_definition", {"taskDefinition": {"taskDefinitionArn": task, "containerDefinitions": [], "family": "other", "revision": 1, "status": "ACTIVE", "requiresAttributes": [], "compatibilities": []}, "tags": [{"key": "Project", "value": "Other"}]}, {"taskDefinition": task, "include": ["TAGS"]})
+    stubber.add_response("describe_capacity_providers", {"capacityProviders": []}, {"include": ["TAGS"]})
 
     with stubber:
         inventory = AwsInventoryCollector(None, None, ecs_client=ecs)._ecs({"Project": "Test"})
@@ -103,6 +105,7 @@ def test_ecs_collection_uses_only_latest_active_task_definition_revision_per_fam
     stubber.add_response("list_clusters", {"clusterArns": []})
     stubber.add_response("list_task_definitions", {"taskDefinitionArns": [old, latest]}, {"status": "ACTIVE"})
     stubber.add_response("describe_task_definition", {"taskDefinition": {"taskDefinitionArn": latest, "containerDefinitions": [], "family": "web", "revision": 2, "status": "ACTIVE", "requiresAttributes": [], "compatibilities": []}, "tags": [{"key": "Project", "value": "Test"}]}, {"taskDefinition": latest, "include": ["TAGS"]})
+    stubber.add_response("describe_capacity_providers", {"capacityProviders": []}, {"include": ["TAGS"]})
 
     with stubber:
         inventory = AwsInventoryCollector(None, None, ecs_client=ecs)._ecs({"Project": "Test"})
@@ -137,6 +140,7 @@ def test_ecs_collection_preserves_older_revision_referenced_by_in_scope_service(
         {"taskDefinition": {"taskDefinitionArn": old, "containerDefinitions": [], "family": "web", "revision": 1, "networkMode": "awsvpc", "status": "ACTIVE", "requiresAttributes": [], "compatibilities": [], "requiresCompatibilities": []}, "tags": []},
         {"taskDefinition": old, "include": ["TAGS"]},
     )
+    stubber.add_response("describe_capacity_providers", {"capacityProviders": []}, {"include": ["TAGS"]})
 
     with stubber:
         inventory = AwsInventoryCollector(None, None, ecs_client=ecs)._ecs({"Project": "Test"})
@@ -151,3 +155,39 @@ def test_ecs_collection_preserves_older_revision_referenced_by_in_scope_service(
 
     assert [item["revision"] for item in inventory["ECSTaskDefinitions"]] == [1]
     assert detect_drift(expected, live) == []
+
+
+def test_ec2_capacity_provider_collection_paginates_and_inherits_cluster_scope() -> None:
+    ecs = _session().client("ecs")
+    stubber = Stubber(ecs)
+    cluster = "arn:aws:ecs:eu-west-1:123456789012:cluster/platform"
+    asg = "arn:aws:autoscaling:eu-west-1:123456789012:autoScalingGroup:asg-id:autoScalingGroupName/ecs-workers"
+    scope_tags = [{"key": "Project", "value": "Test"}]
+
+    stubber.add_response("list_clusters", {"clusterArns": [cluster]})
+    stubber.add_response(
+        "describe_clusters",
+        {"clusters": [{"clusterArn": cluster, "clusterName": "platform", "capacityProviders": ["FARGATE", "platform-ec2"], "tags": scope_tags, "settings": []}]},
+        {"clusters": [cluster], "include": ["TAGS", "SETTINGS"]},
+    )
+    stubber.add_response("list_services", {"serviceArns": []}, {"cluster": cluster})
+    stubber.add_response("list_task_definitions", {"taskDefinitionArns": []}, {"status": "ACTIVE"})
+    stubber.add_response(
+        "describe_capacity_providers",
+        {"capacityProviders": [
+            {"name": "FARGATE", "status": "ACTIVE", "tags": []},
+            {"name": "platform-ec2", "status": "ACTIVE", "autoScalingGroupProvider": {"autoScalingGroupArn": asg, "managedScaling": {"status": "ENABLED", "targetCapacity": 80, "minimumScalingStepSize": 1, "maximumScalingStepSize": 4}, "managedTerminationProtection": "DISABLED", "managedDraining": "ENABLED"}, "tags": []},
+        ], "nextToken": "next"},
+        {"include": ["TAGS"]},
+    )
+    stubber.add_response(
+        "describe_capacity_providers",
+        {"capacityProviders": [{"name": "other-ec2", "status": "ACTIVE", "autoScalingGroupProvider": {"autoScalingGroupArn": asg, "managedScaling": {"status": "ENABLED", "targetCapacity": 100, "minimumScalingStepSize": 1, "maximumScalingStepSize": 1}, "managedTerminationProtection": "DISABLED", "managedDraining": "ENABLED"}, "tags": [{"key": "Project", "value": "Other"}]}]},
+        {"include": ["TAGS"], "nextToken": "next"},
+    )
+
+    with stubber:
+        inventory = AwsInventoryCollector(None, None, ecs_client=ecs)._ecs({"Project": "Test"})
+
+    assert [item["name"] for item in inventory["ECSCapacityProviders"]] == ["platform-ec2"]
+    assert inventory["ECSCapacityProviders"][0]["tags"] == scope_tags
