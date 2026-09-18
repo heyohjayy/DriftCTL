@@ -36,6 +36,7 @@ def test_ecs_and_cloudwatch_logs_collection_permissions_are_read_only() -> None:
     }
 
     assert {
+        "ecs:DescribeCapacityProviders",
         "ecs:DescribeClusters",
         "ecs:DescribeServices",
         "ecs:DescribeTaskDefinition",
