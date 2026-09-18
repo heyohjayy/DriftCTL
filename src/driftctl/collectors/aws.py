@@ -46,7 +46,7 @@ class AwsInventoryCollector:
                 "HostedZones": [], "RecordSets": {}, "LoadBalancers": [], "TargetGroups": [], "TargetGroupReferences": {},
                 "Listeners": {}, "ListenerRules": {},
                 "DBInstances": self._db_instances(scope) if self.rds_client else [],
-                "ECSClusters": [], "ECSTaskDefinitions": [], "ECSServices": [],
+                "ECSClusters": [], "ECSCapacityProviders": [], "ECSTaskDefinitions": [], "ECSServices": [],
                 "LogGroups": self._log_groups(scope) if self.logs_client else [],
                 "CollectionDiagnostics": self.diagnostics,
             }
@@ -223,7 +223,43 @@ class AwsInventoryCollector:
             if _matches(effective_tags, scope):
                 definition["tags"] = effective_tags
                 task_definitions.append(definition)
-        return {"ECSClusters": clusters, "ECSTaskDefinitions": task_definitions, "ECSServices": services}
+        capacity_providers = self._ecs_capacity_providers(scope, clusters)
+        return {
+            "ECSClusters": clusters,
+            "ECSCapacityProviders": capacity_providers,
+            "ECSTaskDefinitions": task_definitions,
+            "ECSServices": services,
+        }
+
+    def _ecs_capacity_providers(
+        self,
+        scope: dict[str, str],
+        scoped_clusters: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        inherited_tags: dict[str, list[dict[str, str]]] = {}
+        for cluster in scoped_clusters:
+            for name in cluster.get("capacityProviders", []):
+                if name not in {"FARGATE", "FARGATE_SPOT"}:
+                    inherited_tags[name] = _ecs_tags(cluster)
+
+        providers: list[dict[str, Any]] = []
+        parameters: dict[str, Any] = {"include": ["TAGS"]}
+        while True:
+            response = self.ecs_client.describe_capacity_providers(**parameters)
+            for provider in response.get("capacityProviders", []):
+                if not provider.get("autoScalingGroupProvider"):
+                    continue
+                own_tags = _ecs_tags(provider)
+                effective_tags = own_tags or inherited_tags.get(provider.get("name"), [])
+                if _matches(effective_tags, scope):
+                    item = dict(provider)
+                    item["tags"] = effective_tags
+                    providers.append(item)
+            token = response.get("nextToken")
+            if not token:
+                break
+            parameters["nextToken"] = token
+        return providers
 
     def _log_groups(self, scope: dict[str, str]) -> list[dict[str, Any]]:
         groups: list[dict[str, Any]] = []

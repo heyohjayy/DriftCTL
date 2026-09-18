@@ -237,6 +237,7 @@ def readable_resource_type(resource_type: str) -> str:
         "load_balancer_listener_rule": "AWS Load Balancer Listener Rule",
         "rds_db_instance": "AWS RDS DB Instance",
         "ecs_cluster": "AWS ECS Cluster",
+        "ecs_capacity_provider": "AWS ECS Capacity Provider",
         "ecs_task_definition": "AWS ECS Task Definition",
         "ecs_service": "AWS ECS Service",
         "cloudwatch_log_group": "AWS CloudWatch Log Group",

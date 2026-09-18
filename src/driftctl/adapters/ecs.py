@@ -41,6 +41,61 @@ def capacity_provider_strategy(values: Any) -> list[dict[str, Any]]:
     )
 
 
+def custom_capacity_providers(values: Any) -> list[str]:
+    return sorted(
+        str(value)
+        for value in values or []
+        if value and str(value) not in {"FARGATE", "FARGATE_SPOT"}
+    )
+
+
+def custom_capacity_provider_strategy(values: Any) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in capacity_provider_strategy(values)
+        if item["capacity_provider"] not in {"FARGATE", "FARGATE_SPOT"}
+    ]
+
+
+def placement_constraints(values: Any) -> list[dict[str, Any]]:
+    return sorted(
+        ({"type": item.get("type"), "expression": item.get("expression")} for item in values or []),
+        key=repr,
+    )
+
+
+def placement_strategy(values: Any) -> list[dict[str, Any]]:
+    return sorted(
+        ({"type": item.get("type"), "field": item.get("field")} for item in values or []),
+        key=repr,
+    )
+
+
+def auto_scaling_group_provider(value: Any) -> dict[str, Any]:
+    item = _first(value)
+    scaling = _first(item.get("managed_scaling", item.get("managedScaling")))
+    return {
+        "auto_scaling_group_arn": item.get("auto_scaling_group_arn", item.get("autoScalingGroupArn")),
+        "managed_draining": item.get("managed_draining", item.get("managedDraining")),
+        "managed_termination_protection": item.get(
+            "managed_termination_protection",
+            item.get("managedTerminationProtection"),
+        ),
+        "managed_scaling": {
+            "status": scaling.get("status"),
+            "target_capacity": scaling.get("target_capacity", scaling.get("targetCapacity")),
+            "minimum_scaling_step_size": scaling.get(
+                "minimum_scaling_step_size",
+                scaling.get("minimumScalingStepSize"),
+            ),
+            "maximum_scaling_step_size": scaling.get(
+                "maximum_scaling_step_size",
+                scaling.get("maximumScalingStepSize"),
+            ),
+        },
+    }
+
+
 def assign_public_ip(value: Any) -> bool:
     if isinstance(value, str):
         return value.upper() == "ENABLED"
@@ -77,6 +132,14 @@ def _container(item: dict[str, Any]) -> dict[str, Any]:
         "secrets": sorted((_named_value(entry, "valueFrom") for entry in item.get("secrets", [])), key=repr),
         "mountPoints": sorted((_mount(mount) for mount in item.get("mountPoints", [])), key=repr),
         "readonlyRootFilesystem": item.get("readonlyRootFilesystem", False),
+        "privileged": item.get("privileged", False),
+        "resourceRequirements": sorted(
+            (
+                {"type": requirement.get("type"), "value": requirement.get("value")}
+                for requirement in item.get("resourceRequirements", [])
+            ),
+            key=repr,
+        ),
     }
     for key in ("command", "entryPoint", "dependsOn", "healthCheck", "linuxParameters", "firelensConfiguration"):
         if key in item:

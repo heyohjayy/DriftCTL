@@ -8,9 +8,14 @@ from typing import Any, Iterable
 
 from driftctl.adapters.ecs import (
     assign_public_ip,
+    auto_scaling_group_provider,
     capacity_provider_strategy,
     cluster_settings,
     container_definitions,
+    custom_capacity_provider_strategy,
+    custom_capacity_providers,
+    placement_constraints,
+    placement_strategy,
     runtime_platform,
     task_definition_ref,
 )
@@ -24,7 +29,8 @@ _SUPPORTED = frozenset({
     "aws_network_acl", "aws_network_acl_rule", "aws_network_acl_association", "aws_iam_role", "aws_iam_role_policy_attachment",
     "aws_iam_role_policy", "aws_iam_instance_profile", "aws_route53_zone", "aws_route53_record", "aws_nat_gateway",
     "aws_lb", "aws_alb", "aws_lb_target_group", "aws_lb_listener", "aws_lb_listener_rule", "aws_db_instance",
-    "aws_ecs_cluster", "aws_ecs_task_definition", "aws_ecs_service", "aws_cloudwatch_log_group",
+    "aws_ecs_cluster", "aws_ecs_cluster_capacity_providers", "aws_ecs_capacity_provider",
+    "aws_ecs_task_definition", "aws_ecs_service", "aws_cloudwatch_log_group",
 })
 
 
@@ -52,6 +58,8 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
     listeners = {v.get("arn"): _listener_name(v, load_balancers) for r in resources if r.get("mode") == "managed" and r.get("type") == "aws_lb_listener" if (v := r.get("values", {}))}
     listener_tags = {v.get("arn"): load_balancer_tags.get(v.get("load_balancer_arn"), {}) for r in resources if r.get("mode") == "managed" and r.get("type") == "aws_lb_listener" if (v := r.get("values", {}))}
     ecs_clusters, ecs_cluster_tags = _ecs_cluster_maps(resources)
+    ecs_cluster_capacity, ecs_capacity_diagnostics = _ecs_cluster_capacity_config(resources, ecs_clusters)
+    diagnostics.extend(ecs_capacity_diagnostics)
     ecs_task_tags = _ecs_task_definition_tags(resources, ecs_cluster_tags)
     snapshots: list[ResourceSnapshot] = []
     for resource in resources:
@@ -80,7 +88,10 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
             if listener: snapshots.append(_listener_rule(resource, values, listener, listener_tags.get(values.get("listener_arn"), {}), target_groups))
             else: diagnostics.append(CollectionDiagnostic("terraform_state", "Skipped listener rule because its parent listener is not supported in this state.", resource.get("address")))
         elif kind == "aws_db_instance": snapshots.append(_db_instance(resource, values))
-        elif kind == "aws_ecs_cluster": snapshots.append(_ecs_cluster(resource, values))
+        elif kind == "aws_ecs_cluster":
+            cluster_name = values.get("name") or resource["name"]
+            snapshots.append(_ecs_cluster(resource, values, ecs_cluster_capacity.get(cluster_name, {})))
+        elif kind == "aws_ecs_capacity_provider": snapshots.append(_ecs_capacity_provider(resource, values))
         elif kind == "aws_ecs_task_definition": snapshots.append(_ecs_task_definition(resource, values, ecs_task_tags))
         elif kind == "aws_ecs_service": snapshots.append(_ecs_service(resource, values, ecs_clusters, ecs_cluster_tags, target_groups))
         elif kind == "aws_cloudwatch_log_group": snapshots.append(_log_group(resource, values))
@@ -188,12 +199,57 @@ def _ecs_cluster_maps(resources: list[dict[str, Any]]) -> tuple[dict[str, str], 
     return names, tags
 
 
-def _ecs_cluster(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+def _ecs_cluster_capacity_config(
+    resources: list[dict[str, Any]],
+    clusters: dict[str, str],
+) -> tuple[dict[str, dict[str, Any]], list[CollectionDiagnostic]]:
+    values_by_cluster: dict[str, dict[str, Any]] = {}
+    diagnostics: list[CollectionDiagnostic] = []
+    for resource in resources:
+        if resource.get("mode") != "managed" or resource.get("type") != "aws_ecs_cluster_capacity_providers":
+            continue
+        values = resource.get("values", {})
+        cluster_ref = str(values.get("cluster_name") or "")
+        cluster_name = clusters.get(cluster_ref)
+        if not cluster_name:
+            diagnostics.append(CollectionDiagnostic(
+                "terraform_state",
+                "Skipped ECS cluster capacity-provider configuration because its parent cluster is not supported in this state.",
+                resource.get("address"),
+            ))
+            continue
+        values_by_cluster[cluster_name] = {
+            "capacity_providers": custom_capacity_providers(values.get("capacity_providers")),
+            "default_capacity_provider_strategy": custom_capacity_provider_strategy(
+                values.get("default_capacity_provider_strategy")
+            ),
+        }
+    return values_by_cluster, diagnostics
+
+
+def _ecs_cluster(r: dict[str, Any], v: dict[str, Any], capacity: dict[str, Any]) -> ResourceSnapshot:
     name = v.get("name") or r["name"]
     return ResourceSnapshot(
         ResourceIdentity("aws", "ecs_cluster", name),
         ResourceCategory.COMPUTE,
-        {"settings": cluster_settings(v.get("setting")), "tags": v.get("tags", {})},
+        {
+            "settings": cluster_settings(v.get("setting")),
+            "capacity_providers": capacity.get("capacity_providers", []),
+            "default_capacity_provider_strategy": capacity.get("default_capacity_provider_strategy", []),
+            "tags": v.get("tags", {}),
+        },
+        r.get("address"),
+    )
+
+
+def _ecs_capacity_provider(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_capacity_provider", v.get("name") or r["name"]),
+        ResourceCategory.COMPUTE,
+        {
+            "auto_scaling_group_provider": auto_scaling_group_provider(v.get("auto_scaling_group_provider")),
+            "tags": v.get("tags", {}),
+        },
         r.get("address"),
     )
 
@@ -228,6 +284,9 @@ def _ecs_task_definition(r: dict[str, Any], v: dict[str, Any], inherited_tags: d
             "task_role_arn": v.get("task_role_arn"),
             "runtime_platform": runtime_platform(v.get("runtime_platform")),
             "ephemeral_storage_gib": ephemeral.get("size_in_gib"),
+            "ipc_mode": v.get("ipc_mode"),
+            "pid_mode": v.get("pid_mode"),
+            "placement_constraints": placement_constraints(v.get("placement_constraints")),
             "container_definitions": container_definitions(v.get("container_definitions")),
             "tags": v.get("tags", {}) or inherited_tags.get(identity, {}),
         },
@@ -256,6 +315,8 @@ def _ecs_service(
             "desired_count": v.get("desired_count"),
             "launch_type": v.get("launch_type"),
             "capacity_provider_strategy": capacity_provider_strategy(v.get("capacity_provider_strategy")),
+            "placement_constraints": placement_constraints(v.get("placement_constraints")),
+            "placement_strategy": placement_strategy(v.get("ordered_placement_strategy")),
             "network_configuration": {
                 "subnets": sorted(network.get("subnets", [])),
                 "security_groups": sorted(network.get("security_groups", [])),

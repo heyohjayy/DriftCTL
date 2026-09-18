@@ -7,9 +7,14 @@ from typing import Any
 
 from driftctl.adapters.ecs import (
     assign_public_ip,
+    auto_scaling_group_provider,
     capacity_provider_strategy,
     cluster_settings,
     container_definitions,
+    custom_capacity_provider_strategy,
+    custom_capacity_providers,
+    placement_constraints,
+    placement_strategy,
     runtime_platform,
     task_definition_ref,
 )
@@ -49,6 +54,7 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     cluster_tags = {x.get("clusterArn"): _tags(x.get("tags", x.get("Tags", []))) for x in raw_clusters}
     task_tags = _ecs_task_definition_tags(payload.get("ECSServices", []), cluster_tags)
     snapshots += [_ecs_cluster(x) for x in raw_clusters]
+    snapshots += [_ecs_capacity_provider(x) for x in payload.get("ECSCapacityProviders", [])]
     snapshots += [_ecs_task_definition(x, task_tags) for x in payload.get("ECSTaskDefinitions", [])]
     snapshots += [_ecs_service(x, cluster_names, cluster_tags, target_group_names) for x in payload.get("ECSServices", [])]
     snapshots += [_log_group(x) for x in payload.get("LogGroups", [])]
@@ -124,7 +130,25 @@ def _ecs_cluster(x: dict[str, Any]) -> ResourceSnapshot:
     return ResourceSnapshot(
         ResourceIdentity("aws", "ecs_cluster", x.get("clusterName") or str(x.get("clusterArn", "unknown")).rsplit("/", 1)[-1]),
         ResourceCategory.COMPUTE,
-        {"settings": cluster_settings(x.get("settings")), "tags": _tags(x.get("tags", x.get("Tags", [])))},
+        {
+            "settings": cluster_settings(x.get("settings")),
+            "capacity_providers": custom_capacity_providers(x.get("capacityProviders")),
+            "default_capacity_provider_strategy": custom_capacity_provider_strategy(
+                x.get("defaultCapacityProviderStrategy")
+            ),
+            "tags": _tags(x.get("tags", x.get("Tags", []))),
+        },
+    )
+
+
+def _ecs_capacity_provider(x: dict[str, Any]) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "ecs_capacity_provider", x.get("name", "unknown")),
+        ResourceCategory.COMPUTE,
+        {
+            "auto_scaling_group_provider": auto_scaling_group_provider(x.get("autoScalingGroupProvider")),
+            "tags": _tags(x.get("tags", x.get("Tags", []))),
+        },
     )
 
 
@@ -155,6 +179,9 @@ def _ecs_task_definition(x: dict[str, Any], inherited_tags: dict[str, dict[str, 
             "task_role_arn": x.get("taskRoleArn"),
             "runtime_platform": runtime_platform(x.get("runtimePlatform")),
             "ephemeral_storage_gib": ephemeral.get("sizeInGiB"),
+            "ipc_mode": x.get("ipcMode"),
+            "pid_mode": x.get("pidMode"),
+            "placement_constraints": placement_constraints(x.get("placementConstraints")),
             "container_definitions": container_definitions(x.get("containerDefinitions")),
             "tags": _tags(x.get("tags", x.get("Tags", []))) or inherited_tags.get(identity, {}),
         },
@@ -181,6 +208,8 @@ def _ecs_service(
             "desired_count": x.get("desiredCount"),
             "launch_type": x.get("launchType"),
             "capacity_provider_strategy": capacity_provider_strategy(x.get("capacityProviderStrategy")),
+            "placement_constraints": placement_constraints(x.get("placementConstraints")),
+            "placement_strategy": placement_strategy(x.get("placementStrategy")),
             "network_configuration": {
                 "subnets": sorted(network.get("subnets", [])),
                 "security_groups": sorted(network.get("securityGroups", [])),
