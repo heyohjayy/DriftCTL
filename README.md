@@ -12,7 +12,7 @@
 
 <p align="center"><strong>Detect Terraform-to-AWS drift before it becomes operational debt.</strong></p>
 
-DriftCTL is a read-only Terraform drift-detection and remediation-planning tool for AWS. It helps teams identify and safely resolve Terraform state drift: the common situation where a Terraform-managed environment no longer matches the configuration that exists in AWS.
+`DriftCTL` is a read-only Terraform drift-detection and remediation-planning tool for AWS. It helps teams identify and safely resolve Terraform state drift: the common situation where a Terraform-managed environment no longer matches the configuration that exists in AWS.
 
 The tool compares Terraform's recorded expected state with live AWS inventory, identifies the difference, classifies its risk, recommends a safe next action, and records an append-only audit trail. It never runs `terraform apply`, changes Terraform state, or calls AWS mutation APIs.
 
