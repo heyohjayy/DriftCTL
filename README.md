@@ -1,4 +1,7 @@
-<h1 align="center">DriftCTL</h1>
+<h1 align="center">
+  <img src="assets/driftctl-logo.png" alt="DriftCTL alignment mark" width="58" valign="middle">
+  <font color="#2563EB">DriftCTL</font>
+</h1>
 
 <p align="center"><strong>Infrastructure Drift Control Platform</strong></p>
 
