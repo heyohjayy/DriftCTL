@@ -1,6 +1,6 @@
 <h1 align="center">
-  <img src="assets/driftctl-logo.png" alt="DriftCTL alignment mark" width="58" valign="middle">
-  <font color="#2563EB">DriftCTL</font>
+  <img src="assets/driftctl-logo.png" alt="DriftCTL alignment mark" height="78" valign="middle">
+  <img src="assets/driftctl-wordmark.svg" alt="DriftCTL" height="62" valign="middle">
 </h1>
 
 <p align="center"><strong>Infrastructure Drift Control Platform</strong></p>
