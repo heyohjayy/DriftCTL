@@ -62,6 +62,26 @@
       "Resource": "*"
     },
     {
+      "Sid": "ReadLambdaInventory",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionConcurrency",
+        "lambda:ListFunctions",
+        "lambda:ListTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadEventBridgeInventory",
+      "Effect": "Allow",
+      "Action": [
+        "events:ListRules",
+        "events:ListTagsForResource",
+        "events:ListTargetsByRule"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "ReadIamIdentityInventory",
       "Effect": "Allow",
       "Action": [
