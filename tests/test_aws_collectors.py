@@ -57,3 +57,51 @@ def test_tag_scope_is_sent_to_ec2_collection_calls() -> None:
 
     assert [group["GroupId"] for group in inventory["SecurityGroups"]] == ["sg-scoped"]
     assert [instance["InstanceId"] for instance in inventory["Reservations"][0]["Instances"]] == ["i-scoped"]
+
+
+def test_asg_managed_instances_are_excluded_with_a_collection_diagnostic() -> None:
+    session = boto3.Session(
+        aws_access_key_id="testing",
+        aws_secret_access_key="testing",
+        region_name="us-east-1",
+    )
+    ec2 = session.client("ec2")
+    stubber = Stubber(ec2)
+    stubber.add_response(
+        "describe_instances",
+        {
+            "Reservations": [{
+                "ReservationId": "r-0123",
+                "Instances": [
+                    {
+                        "InstanceId": "i-asg",
+                        "ImageId": "ami-0123",
+                        "InstanceType": "t3.micro",
+                        "Tags": [
+                            {"Key": "Project", "Value": "Test"},
+                            {"Key": "aws:autoscaling:groupName", "Value": "ecs-workers"},
+                        ],
+                    },
+                    {
+                        "InstanceId": "i-direct",
+                        "ImageId": "ami-0123",
+                        "InstanceType": "t3.micro",
+                        "Tags": [{"Key": "Project", "Value": "Test"}],
+                    },
+                ],
+            }],
+        },
+    )
+    collector = AwsInventoryCollector(ec2, None)
+
+    with stubber:
+        reservations = collector._instances({})
+
+    assert [item["InstanceId"] for item in reservations[0]["Instances"]] == ["i-direct"]
+    assert collector.diagnostics == [{
+        "source": "aws_collection",
+        "message": (
+            "Excluded EC2 instance i-asg because it is managed by Auto Scaling group ecs-workers; "
+            "ASG-managed instances are outside the direct EC2 comparison surface."
+        ),
+    }]
