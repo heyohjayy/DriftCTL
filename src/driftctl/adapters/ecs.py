@@ -66,9 +66,19 @@ def placement_constraints(values: Any) -> list[dict[str, Any]]:
 
 def placement_strategy(values: Any) -> list[dict[str, Any]]:
     return sorted(
-        ({"type": item.get("type"), "field": item.get("field")} for item in values or []),
+        (
+            {"type": item.get("type"), "field": _placement_field(item.get("field"))}
+            for item in values or []
+        ),
         key=repr,
     )
+
+
+def launch_type(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def auto_scaling_group_provider(value: Any) -> dict[str, Any]:
@@ -180,6 +190,12 @@ def _first(value: Any) -> dict[str, Any]:
     if isinstance(value, list):
         return value[0] if value else {}
     return value if isinstance(value, dict) else {}
+
+
+def _placement_field(value: Any) -> Any:
+    if isinstance(value, str) and value.casefold() in {"cpu", "memory"}:
+        return value.casefold()
+    return value
 
 
 def _stable(value: Any) -> Any:

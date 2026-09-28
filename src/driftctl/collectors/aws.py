@@ -34,7 +34,7 @@ class AwsInventoryCollector:
             inventory = {
                 "SecurityGroups": self._ec2("describe_security_groups", "SecurityGroups", scope),
                 "Buckets": self._buckets(scope),
-                "Reservations": self._ec2("describe_instances", "Reservations", scope),
+                "Reservations": self._instances(scope),
                 "Vpcs": self._ec2("describe_vpcs", "Vpcs", scope),
                 "Subnets": self._ec2("describe_subnets", "Subnets", scope),
                 "InternetGateways": self._ec2("describe_internet_gateways", "InternetGateways", scope),
@@ -61,6 +61,29 @@ class AwsInventoryCollector:
         values: list[dict[str, Any]] = []
         for page in self.ec2_client.get_paginator(operation).paginate(**_ec2_filters(scope)): values.extend(page.get(result_key, []))
         return values
+
+    def _instances(self, scope: dict[str, str]) -> list[dict[str, Any]]:
+        reservations: list[dict[str, Any]] = []
+        for reservation in self._ec2("describe_instances", "Reservations", scope):
+            instances = []
+            for instance in reservation.get("Instances", []):
+                group_name = _autoscaling_group_name(instance)
+                if group_name:
+                    self.diagnostics.append({
+                        "source": "aws_collection",
+                        "message": (
+                            f"Excluded EC2 instance {instance.get('InstanceId', 'unknown')} because it is managed "
+                            f"by Auto Scaling group {group_name}; ASG-managed instances are outside the direct "
+                            "EC2 comparison surface."
+                        ),
+                    })
+                    continue
+                instances.append(instance)
+            if instances:
+                item = dict(reservation)
+                item["Instances"] = instances
+                reservations.append(item)
+        return reservations
 
     def _buckets(self, scope: dict[str, str]) -> list[dict[str, Any]]:
         values = []
@@ -295,6 +318,8 @@ def _matches(tags: list[dict[str, str]] | dict[str, str], scope: dict[str, str])
     return all(values.get(k) == v for k, v in scope.items())
 def _ecs_tags(value: dict[str, Any]) -> list[dict[str, str]]:
     return value.get("tags", value.get("Tags", []))
+def _autoscaling_group_name(instance: dict[str, Any]) -> str | None:
+    return next((tag.get("Value") for tag in instance.get("Tags", []) if tag.get("Key") == "aws:autoscaling:groupName"), None)
 def _task_definition_family(arn: str) -> str:
     return arn.rsplit("/", 1)[-1].rsplit(":", 1)[0]
 def _task_definition_arns_for_comparison(arns: list[str], referenced_arns: set[str]) -> list[str]:

@@ -13,6 +13,7 @@ from driftctl.adapters.ecs import (
     container_definitions,
     custom_capacity_provider_strategy,
     custom_capacity_providers,
+    launch_type,
     placement_constraints,
     placement_strategy,
     runtime_platform,
@@ -30,7 +31,12 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     snapshots += [_network(x, "internet_gateway", {"vpc_id": next((a.get("VpcId") for a in x.get("Attachments", []) if a.get("State") == "available"), None), "tags": _tags(x.get("Tags", []))}) for x in payload.get("InternetGateways", [])]
     snapshots += [_route_table(x) for x in payload.get("RouteTables", [])]
     snapshots += [_nacl(x) for x in payload.get("NetworkAcls", [])]
-    for reservation in payload.get("Reservations", []): snapshots += [_instance(x) for x in reservation.get("Instances", [])]
+    for reservation in payload.get("Reservations", []):
+        snapshots += [
+            _instance(x)
+            for x in reservation.get("Instances", [])
+            if not _autoscaling_group_name(x)
+        ]
     subnets = {x.get("SubnetId"): x.get("VpcId") for x in payload.get("Subnets", [])}
     snapshots += [_nat_gateway(x, subnets) for x in payload.get("NatGateways", []) if x.get("State") != "deleted"]
     raw_load_balancers = [x for x in payload.get("LoadBalancers", []) if x.get("Type", "application") == "application"]
@@ -206,7 +212,7 @@ def _ecs_service(
             "cluster": cluster,
             "task_definition": task_definition_ref(x.get("taskDefinition")),
             "desired_count": x.get("desiredCount"),
-            "launch_type": x.get("launchType"),
+            "launch_type": launch_type(x.get("launchType")),
             "capacity_provider_strategy": capacity_provider_strategy(x.get("capacityProviderStrategy")),
             "placement_constraints": placement_constraints(x.get("placementConstraints")),
             "placement_strategy": placement_strategy(x.get("placementStrategy")),
@@ -237,6 +243,17 @@ def _ecs_load_balancers_live(values: list[dict[str, Any]], target_groups: dict[s
             "container_port": item.get("containerPort"),
         } for item in values),
         key=repr,
+    )
+
+
+def _autoscaling_group_name(instance: dict[str, Any]) -> str | None:
+    return next(
+        (
+            tag.get("Value")
+            for tag in instance.get("Tags", [])
+            if tag.get("Key") == "aws:autoscaling:groupName"
+        ),
+        None,
     )
 
 
