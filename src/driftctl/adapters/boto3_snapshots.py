@@ -20,6 +20,10 @@ from driftctl.adapters.ecs import (
     task_definition_ref,
 )
 from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
+from driftctl.adapters.serverless import (
+    eventbridge_rule_configuration,
+    lambda_configuration,
+)
 from driftctl.models import ResourceCategory, ResourceIdentity, ResourceSnapshot
 
 
@@ -64,6 +68,8 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     snapshots += [_ecs_task_definition(x, task_tags) for x in payload.get("ECSTaskDefinitions", [])]
     snapshots += [_ecs_service(x, cluster_names, cluster_tags, target_group_names) for x in payload.get("ECSServices", [])]
     snapshots += [_log_group(x) for x in payload.get("LogGroups", [])]
+    snapshots += [_lambda_function(x) for x in payload.get("LambdaFunctions", [])]
+    snapshots += [_eventbridge_rule(x) for x in payload.get("EventBridgeRules", [])]
     snapshots += [_role(x) for x in payload.get("IamRoles", [])]
     snapshots += [_profile(x) for x in payload.get("InstanceProfiles", [])]
     zones = [_zone(x) for x in payload.get("HostedZones", [])]; snapshots += zones
@@ -267,6 +273,30 @@ def _log_group(x: dict[str, Any]) -> ResourceSnapshot:
             "log_group_class": x.get("logGroupClass") or "STANDARD",
             "tags": _tags(x.get("tags", x.get("Tags", {}))),
         },
+    )
+
+
+def _lambda_function(x: dict[str, Any]) -> ResourceSnapshot:
+    attributes = lambda_configuration(x)
+    attributes["tags"] = _tags(x.get("Tags", x.get("tags", {})))
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "lambda_function", x.get("FunctionName", "unknown")),
+        ResourceCategory.COMPUTE,
+        attributes,
+    )
+
+
+def _eventbridge_rule(x: dict[str, Any]) -> ResourceSnapshot:
+    attributes = eventbridge_rule_configuration(x, x.get("Targets", []))
+    attributes["tags"] = _tags(x.get("Tags", x.get("tags", [])))
+    return ResourceSnapshot(
+        ResourceIdentity(
+            "aws",
+            "eventbridge_scheduled_rule",
+            x.get("Name", "unknown"),
+        ),
+        ResourceCategory.OTHER,
+        attributes,
     )
 
 

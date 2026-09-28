@@ -21,6 +21,10 @@ from driftctl.adapters.ecs import (
     task_definition_ref,
 )
 from driftctl.adapters.security_group_rules import canonicalize_security_group_rules
+from driftctl.adapters.serverless import (
+    eventbridge_rule_configuration,
+    lambda_configuration,
+)
 from driftctl.models import CollectionDiagnostic, ResourceCategory, ResourceIdentity, ResourceSnapshot
 
 _SUPPORTED = frozenset({
@@ -32,6 +36,7 @@ _SUPPORTED = frozenset({
     "aws_lb", "aws_alb", "aws_lb_target_group", "aws_lb_listener", "aws_lb_listener_rule", "aws_db_instance",
     "aws_ecs_cluster", "aws_ecs_cluster_capacity_providers", "aws_ecs_capacity_provider",
     "aws_ecs_task_definition", "aws_ecs_service", "aws_cloudwatch_log_group",
+    "aws_lambda_function", "aws_cloudwatch_event_rule", "aws_cloudwatch_event_target",
 })
 
 
@@ -62,6 +67,8 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
     ecs_cluster_capacity, ecs_capacity_diagnostics = _ecs_cluster_capacity_config(resources, ecs_clusters)
     diagnostics.extend(ecs_capacity_diagnostics)
     ecs_task_tags = _ecs_task_definition_tags(resources, ecs_cluster_tags)
+    eventbridge_targets, eventbridge_diagnostics = _eventbridge_targets_by_rule(resources)
+    diagnostics.extend(eventbridge_diagnostics)
     snapshots: list[ResourceSnapshot] = []
     for resource in resources:
         if resource.get("mode") != "managed":
@@ -96,11 +103,62 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
         elif kind == "aws_ecs_task_definition": snapshots.append(_ecs_task_definition(resource, values, ecs_task_tags))
         elif kind == "aws_ecs_service": snapshots.append(_ecs_service(resource, values, ecs_clusters, ecs_cluster_tags, target_groups))
         elif kind == "aws_cloudwatch_log_group": snapshots.append(_log_group(resource, values))
+        elif kind == "aws_lambda_function": snapshots.append(_lambda_function(resource, values))
+        elif kind == "aws_cloudwatch_event_rule":
+            if values.get("schedule_expression"):
+                key = (
+                    values.get("event_bus_name") or "default",
+                    values.get("name") or resource["name"],
+                )
+                snapshots.append(
+                    _eventbridge_rule(resource, values, eventbridge_targets.get(key, []))
+                )
+            else:
+                diagnostics.append(CollectionDiagnostic(
+                    "terraform_state",
+                    "Skipped EventBridge rule because only scheduled rules are supported.",
+                    resource.get("address"),
+                ))
         elif kind == "aws_route53_record":
             zone_id = values.get("zone_id")
             if zone_id not in zones: diagnostics.append(CollectionDiagnostic("terraform_state", "Skipped Route 53 record because its parent hosted zone is not supported in this state.", resource.get("address")))
             else: snapshots.append(_record(resource, values, zones[zone_id], zone_tags[zone_id]))
     return TerraformStateAdaptation(snapshots, tuple(diagnostics))
+
+
+def _eventbridge_targets_by_rule(
+    resources: list[dict[str, Any]],
+) -> tuple[dict[tuple[str, str], list[dict[str, Any]]], list[CollectionDiagnostic]]:
+    parents: dict[tuple[str, str], tuple[str, str]] = {}
+    targets: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    diagnostics: list[CollectionDiagnostic] = []
+    for resource in resources:
+        if resource.get("mode") != "managed" or resource.get("type") != "aws_cloudwatch_event_rule":
+            continue
+        values = resource.get("values", {})
+        if not values.get("schedule_expression"):
+            continue
+        bus = values.get("event_bus_name") or "default"
+        name = values.get("name") or resource["name"]
+        key = (bus, name)
+        for reference in (name, values.get("arn"), values.get("id")):
+            if reference:
+                parents[(bus, str(reference))] = key
+    for resource in resources:
+        if resource.get("mode") != "managed" or resource.get("type") != "aws_cloudwatch_event_target":
+            continue
+        values = resource.get("values", {})
+        bus = values.get("event_bus_name") or "default"
+        parent = parents.get((bus, str(values.get("rule") or "")))
+        if not parent:
+            diagnostics.append(CollectionDiagnostic(
+                "terraform_state",
+                "Skipped EventBridge target because its parent is not a supported scheduled rule.",
+                resource.get("address"),
+            ))
+            continue
+        targets.setdefault(parent, []).append(values)
+    return targets, diagnostics
 
 
 def _walk(module: dict[str, Any]) -> Iterable[dict[str, Any]]:
@@ -359,6 +417,36 @@ def _log_group(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
             "log_group_class": v.get("log_group_class") or "STANDARD",
             "tags": v.get("tags", {}),
         },
+        r.get("address"),
+    )
+
+
+def _lambda_function(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+    attributes = lambda_configuration(v)
+    attributes["tags"] = v.get("tags", {})
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "lambda_function", v.get("function_name") or r["name"]),
+        ResourceCategory.COMPUTE,
+        attributes,
+        r.get("address"),
+    )
+
+
+def _eventbridge_rule(
+    r: dict[str, Any],
+    v: dict[str, Any],
+    targets: list[dict[str, Any]],
+) -> ResourceSnapshot:
+    attributes = eventbridge_rule_configuration(v, targets)
+    attributes["tags"] = v.get("tags", {})
+    return ResourceSnapshot(
+        ResourceIdentity(
+            "aws",
+            "eventbridge_scheduled_rule",
+            v.get("name") or r["name"],
+        ),
+        ResourceCategory.OTHER,
+        attributes,
         r.get("address"),
     )
 

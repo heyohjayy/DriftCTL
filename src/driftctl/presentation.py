@@ -97,6 +97,36 @@ class LogRetentionImpactRule:
         return None
 
 
+class LambdaExecutionRoleImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if (
+            finding.identity.resource_type == "lambda_function"
+            and "role_arn" in finding.changes
+        ):
+            return ImpactAssessment(ImpactLevel.HIGH, ImpactLevel.NONE, ImpactLevel.LOW)
+        return None
+
+
+class EventBridgeScheduleImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if (
+            finding.identity.resource_type != "eventbridge_scheduled_rule"
+            or finding.drift_type is not DriftType.MODIFIED
+        ):
+            return None
+        enabled = finding.changes.get("enabled", {})
+        availability = (
+            ImpactLevel.HIGH
+            if enabled.get("expected") is True and enabled.get("live") is False
+            else ImpactLevel.LOW
+        )
+        return ImpactAssessment(
+            ImpactLevel.NOT_ASSESSED,
+            ImpactLevel.NOT_ASSESSED,
+            availability,
+        )
+
+
 class UnassessedImpactRule:
     def evaluate(self, finding: Finding) -> ImpactAssessment:
         return ImpactAssessment(
@@ -143,6 +173,29 @@ class LogRetentionExplanationRule:
             return FindingExplanation(
                 "The CloudWatch log retention period differs from Terraform.",
                 "This can change investigation history, compliance posture, and retained-log storage cost.",
+            )
+        return None
+
+
+class LambdaExecutionRoleExplanationRule:
+    def evaluate(self, finding: Finding) -> FindingExplanation | None:
+        if (
+            finding.identity.resource_type == "lambda_function"
+            and "role_arn" in finding.changes
+        ):
+            return FindingExplanation(
+                "The Lambda function uses a different execution role than Terraform specifies.",
+                "A role change can alter effective permissions and may prevent the function from accessing required services.",
+            )
+        return None
+
+
+class EventBridgeScheduleExplanationRule:
+    def evaluate(self, finding: Finding) -> FindingExplanation | None:
+        if finding.identity.resource_type == "eventbridge_scheduled_rule":
+            return FindingExplanation(
+                "The EventBridge schedule, enabled state, or target configuration differs from Terraform.",
+                "The workload may run at an unexpected time, stop running, or invoke a different target.",
             )
         return None
 
@@ -205,11 +258,11 @@ def remediation_plan(finding: Finding, rules: tuple[RemediationRule, ...] | None
 
 
 def default_impact_rules() -> tuple[ImpactRule, ...]:
-    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsScaledToZeroImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
+    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsScaledToZeroImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), LambdaExecutionRoleImpactRule(), EventBridgeScheduleImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
 
 
 def default_explanation_rules() -> tuple[ExplanationRule, ...]:
-    return (PublicIngressExplanationRule(), EcsPublicIpExplanationRule(), LogRetentionExplanationRule(), TagOnlyExplanationRule(), GenericExplanationRule())
+    return (PublicIngressExplanationRule(), EcsPublicIpExplanationRule(), LogRetentionExplanationRule(), LambdaExecutionRoleExplanationRule(), EventBridgeScheduleExplanationRule(), TagOnlyExplanationRule(), GenericExplanationRule())
 
 
 def default_remediation_rules() -> tuple[RemediationRule, ...]:
@@ -241,5 +294,7 @@ def readable_resource_type(resource_type: str) -> str:
         "ecs_task_definition": "AWS ECS Task Definition",
         "ecs_service": "AWS ECS Service",
         "cloudwatch_log_group": "AWS CloudWatch Log Group",
+        "lambda_function": "AWS Lambda Function",
+        "eventbridge_scheduled_rule": "AWS EventBridge Scheduled Rule",
     }
     return labels.get(resource_type, f"AWS {resource_type.replace('_', ' ').title()}")

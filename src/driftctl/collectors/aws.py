@@ -22,10 +22,13 @@ class AwsInventoryCollector:
         rds_client: Any | None = None,
         ecs_client: Any | None = None,
         logs_client: Any | None = None,
+        lambda_client: Any | None = None,
+        events_client: Any | None = None,
     ) -> None:
         self.ec2_client, self.s3_client, self.iam_client, self.route53_client = ec2_client, s3_client, iam_client, route53_client
         self.elbv2_client, self.rds_client = elbv2_client, rds_client
         self.ecs_client, self.logs_client = ecs_client, logs_client
+        self.lambda_client, self.events_client = lambda_client, events_client
         self.diagnostics: list[dict[str, str]] = []
 
     def collect(self, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
@@ -48,6 +51,8 @@ class AwsInventoryCollector:
                 "DBInstances": self._db_instances(scope) if self.rds_client else [],
                 "ECSClusters": [], "ECSCapacityProviders": [], "ECSTaskDefinitions": [], "ECSServices": [],
                 "LogGroups": self._log_groups(scope) if self.logs_client else [],
+                "LambdaFunctions": self._lambda_functions(scope) if self.lambda_client else [],
+                "EventBridgeRules": self._eventbridge_rules(scope) if self.events_client else [],
                 "CollectionDiagnostics": self.diagnostics,
             }
             if self.route53_client: inventory["HostedZones"], inventory["RecordSets"] = self._zones(scope)
@@ -295,6 +300,57 @@ class AwsInventoryCollector:
                     groups.append(item)
         return groups
 
+    def _lambda_functions(self, scope: dict[str, str]) -> list[dict[str, Any]]:
+        functions: list[dict[str, Any]] = []
+        for page in self.lambda_client.get_paginator("list_functions").paginate():
+            for function in page.get("Functions", []):
+                item = dict(function)
+                item["Tags"] = self.lambda_client.list_tags(
+                    Resource=item["FunctionArn"]
+                ).get("Tags", {})
+                if not _matches(item["Tags"], scope):
+                    continue
+                concurrency = self.lambda_client.get_function_concurrency(
+                    FunctionName=item["FunctionName"]
+                )
+                item["ReservedConcurrentExecutions"] = concurrency.get(
+                    "ReservedConcurrentExecutions",
+                    -1,
+                )
+                functions.append(item)
+        return functions
+
+    def _eventbridge_rules(self, scope: dict[str, str]) -> list[dict[str, Any]]:
+        rules: list[dict[str, Any]] = []
+        for page in self.events_client.get_paginator("list_rules").paginate(
+            EventBusName="default"
+        ):
+            for rule in page.get("Rules", []):
+                if not rule.get("ScheduleExpression"):
+                    self.diagnostics.append({
+                        "source": "aws_collection",
+                        "message": (
+                            f"Skipped EventBridge rule {rule.get('Name', 'unknown')} because only "
+                            "scheduled rules are supported."
+                        ),
+                    })
+                    continue
+                item = dict(rule)
+                item["Tags"] = self.events_client.list_tags_for_resource(
+                    ResourceARN=item["Arn"]
+                ).get("Tags", [])
+                if not _matches(item["Tags"], scope):
+                    continue
+                item["Targets"] = [
+                    target
+                    for target_page in self.events_client.get_paginator(
+                        "list_targets_by_rule"
+                    ).paginate(Rule=item["Name"], EventBusName="default")
+                    for target in target_page.get("Targets", [])
+                ]
+                rules.append(item)
+        return rules
+
 
 def collect_live_inventory(profile: str | None, region: str, role_arn: str | None, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
     session = _session(profile, region, role_arn)
@@ -307,6 +363,8 @@ def collect_live_inventory(profile: str | None, region: str, role_arn: str | Non
         session.client("rds", region_name=region),
         session.client("ecs", region_name=region),
         session.client("logs", region_name=region),
+        session.client("lambda", region_name=region),
+        session.client("events", region_name=region),
     ).collect(tag_scope)
 
 

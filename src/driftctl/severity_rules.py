@@ -187,6 +187,53 @@ class LogRetentionChangeRule:
         )
 
 
+class LambdaExecutionRoleChangeRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if (
+            finding.identity.resource_type == "lambda_function"
+            and finding.drift_type is DriftType.MODIFIED
+            and "role_arn" in finding.changes
+        ):
+            return SeverityDecision(
+                Severity.SEVERE,
+                "LambdaExecutionRoleChangeRule: the Lambda execution role differs from the approved Terraform configuration.",
+                RemediationRecommendation(
+                    "Validate the function's execution identity and effective permissions before reconciliation.",
+                    (
+                        "Review both roles and their attached policies for privilege changes.",
+                        "Confirm the intended role with the workload owner.",
+                        "Reconcile through a reviewed Terraform plan after approval.",
+                    ),
+                ),
+            )
+        return None
+
+
+class EventBridgeScheduleChangeRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if (
+            finding.identity.resource_type != "eventbridge_scheduled_rule"
+            or finding.drift_type is not DriftType.MODIFIED
+            or not {"schedule_expression", "enabled", "targets"}.intersection(finding.changes)
+        ):
+            return None
+        enabled = finding.changes.get("enabled", {})
+        disabled = enabled.get("expected") is True and enabled.get("live") is False
+        severity = Severity.SEVERE if disabled else Severity.MODERATE
+        return SeverityDecision(
+            severity,
+            "EventBridgeScheduleChangeRule: the schedule, enabled state, or target set differs from Terraform.",
+            RemediationRecommendation(
+                "Confirm the intended invocation timing and targets before reconciliation.",
+                (
+                    "Review the rule schedule, state, and every target ARN.",
+                    "Check downstream workload and retry implications.",
+                    "Reconcile through a reviewed Terraform plan after approval.",
+                ),
+            ),
+        )
+
+
 class MissingResourceRule:
     def evaluate(self, finding: Finding) -> SeverityDecision | None:
         if finding.drift_type is DriftType.MISSING:
@@ -294,7 +341,7 @@ def _generic_remediation() -> RemediationRecommendation:
 
 
 def default_rules() -> list[SeverityRule]:
-    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), EcsPublicIpRule(), LogRetentionChangeRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
+    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), EcsPublicIpRule(), LogRetentionChangeRule(), LambdaExecutionRoleChangeRule(), EventBridgeScheduleChangeRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
 
 
 def _has_administrator_access(policy_arns: list[str]) -> bool:
