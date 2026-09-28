@@ -2,7 +2,7 @@
 
 Thank you for considering a contribution to DriftCTL. Contributions that make Terraform-to-AWS drift detection clearer, safer, and more useful are welcome.
 
-By submitting a contribution for inclusion in DriftCTL, you agree to license that contribution under the [Apache License 2.0](LICENSE), unless you explicitly state otherwise in writing.
+By submitting a contribution for inclusion in DriftCTL, you agree to license that contribution under the [GNU Affero General Public License v3.0](LICENSE), unless you explicitly state otherwise in writing.
 
 ## Useful Contributions
 

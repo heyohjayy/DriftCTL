@@ -9,7 +9,7 @@
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11 or later"></a>
   <a href="https://www.terraform.io/"><img src="https://img.shields.io/badge/Terraform-State-7B42BC?logo=terraform&logoColor=white" alt="Terraform state"></a>
   <a href="https://aws.amazon.com/"><img src="https://img.shields.io/badge/AWS-Read--only%20collection-232F3E?logo=amazonaws&logoColor=white" alt="Read-only AWS collection"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-D22128" alt="Apache License 2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-D22128" alt="GNU Affero General Public License v3.0"></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributions-Welcome-2EA44F" alt="Contributions welcome"></a>
 </p>
 
@@ -164,5 +164,5 @@ For a complete step-by-step guide to using DriftCTL manually, including safe liv
 - [Setup and usage guide](docs/SETUP.md): the complete manual workflow, from installation and offline evaluation to safe live AWS scans, controlled validation, cleanup, and troubleshooting.
 - [Terraform infrastructure](infra/terraform/README.md): the version-controlled non-production infrastructure reference used for this project's controlled live validation.
 - [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The setup guide explains how to apply it safely.
-- [License](LICENSE): Apache License 2.0 permissions, conditions, and limitations.
+- [License](LICENSE): GNU Affero General Public License v3.0 permissions, conditions, and limitations. Modified versions offered to users over a network must provide their corresponding source code under the same license.
 - [Evidence index](docs/screenshots/README.md): screenshots from the offline and controlled live-validation demonstrations.
