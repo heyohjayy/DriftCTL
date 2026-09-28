@@ -27,5 +27,8 @@ This directory holds the sanitized evidence screenshots used in the project READ
 - `19-sprint3c1-cloudwatch-log-retention-drift.png`: CloudWatch log retention changed from seven days to one day and detected as moderate drift.
 - `20-sprint3c1-ecs-service-desired-count-drift.png`: Fargate service scaled from one task to zero and detected with high availability impact.
 - `21-sprint3c1-ecs-fargate-clean-after-remediation.png`: final clean scan after the ECS service and CloudWatch Logs settings are restored.
+- `22-sprint3c1-ecs-ec2-clean-baseline.png`: clean baseline after the ECS-on-EC2 validation environment is applied.
+- `23-sprint3c1-ecs-ec2-capacity-provider-drift.png`: custom ECS capacity-provider target capacity changed from 100 to 90 and detected as moderate drift.
+- `24-sprint3c1-ecs-ec2-clean-after-remediation.png`: final clean scan after the capacity-provider target capacity is restored.
 
-These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, RDS, ECS, and CloudWatch Logs, plus successful final remediation scans.
+These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, RDS, ECS on Fargate and EC2, custom capacity providers, and CloudWatch Logs, plus successful final remediation scans.

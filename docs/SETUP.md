@@ -194,7 +194,7 @@ The committed live-validation reference contains the retained VPC, public and pr
 > NAT gateways, load balancers, and databases can incur charges while they exist. Create them only in a short-lived test environment, watch the AWS billing console, and remove them when your validation is complete unless you deliberately choose to retain them.
 
 > [!NOTE]
-> ECS Fargate tasks and CloudWatch Logs can also incur charges while they exist. The ECS validation configuration is opt-in and is intended only for a short-lived, non-production test. The Fargate task receives a public IP solely so this small lab can retrieve its public container image without a NAT gateway; its security group has no inbound rules. This is a validation design, not a production networking recommendation.
+> ECS Fargate tasks, ECS-on-EC2 capacity, and CloudWatch Logs can also incur charges while they exist. The ECS validation configurations are intended only for short-lived, non-production tests. The Fargate task receives a public IP solely so this small lab can retrieve its public container image without a NAT gateway; its security group has no inbound rules. This is a validation design, not a production networking recommendation.
 
 Add the same tag to every resource you want DriftCTL to scan. For example:
 
@@ -618,6 +618,51 @@ driftctl scan
 ![ECS service desired-count drift](screenshots/20-sprint3c1-ecs-service-desired-count-drift.png)
 
 ![Clean scan after ECS Fargate remediation](screenshots/21-sprint3c1-ecs-fargate-clean-after-remediation.png)
+
+### ECS on EC2 Validation
+
+This separate controlled validation demonstrates DriftCTL's ECS-on-EC2 comparison support. It compares a custom ECS capacity provider and its Auto Scaling group provider settings, together with the cluster association, EC2-compatible task definition, and ECS service placement configuration. It does not compare the runtime health of individual container instances or the underlying Auto Scaling group's desired, minimum, and maximum capacity.
+
+Run this validation only in a short-lived, non-production ECS-on-EC2 environment. The Terraform state must include the ECS cluster, custom capacity provider, capacity-provider association, task definition, and service that you intend to scan. The Auto Scaling group can create billable EC2 capacity, so review the Terraform plan and remove the environment when validation is complete.
+
+> [!WARNING]
+> Use an approved administrative identity for the temporary ECS changes below. Do not use the `driftctl-readonly` profile. DriftCTL itself remains read-only; these changes deliberately create a difference for the scanner to report.
+
+Start with a clean scan. The collection diagnostics can exclude an EC2 instance that belongs to the capacity provider's Auto Scaling group because DriftCTL does not treat the Auto Scaling group's runtime instances as directly managed EC2 resources. This exclusion does not prevent comparison of the ECS capacity provider itself.
+
+![Clean ECS-on-EC2 baseline](screenshots/22-sprint3c1-ecs-ec2-clean-baseline.png)
+
+### Test 13: Find an ECS Capacity-Provider Scaling Change
+
+With Terraform expecting managed scaling target capacity `100`, temporarily reduce the custom capacity provider to `90`:
+
+```powershell
+aws ecs update-capacity-provider --name driftctl-sprint3-ecs-ec2-capacity --auto-scaling-group-provider "managedScaling={status=ENABLED,targetCapacity=90,minimumScalingStepSize=1,maximumScalingStepSize=1},managedTerminationProtection=DISABLED,managedDraining=ENABLED" --region eu-west-1 --no-cli-pager
+```
+
+Capacity-provider updates are asynchronous. Verify that the update is complete and that the live target capacity is `90` before scanning:
+
+```powershell
+aws ecs describe-capacity-providers --region eu-west-1 --profile driftctl-readonly --capacity-providers driftctl-sprint3-ecs-ec2-capacity --query "capacityProviders[0].[name,status,updateStatus,autoScalingGroupProvider.managedScaling.targetCapacity]" --output table
+```
+
+Run `driftctl scan`. DriftCTL should report one `modified` `AWS ECS Capacity Provider` finding for `auto_scaling_group_provider`, showing Terraform target capacity `100` and live target capacity `90`.
+
+![ECS-on-EC2 capacity-provider scaling drift](screenshots/23-sprint3c1-ecs-ec2-capacity-provider-drift.png)
+
+Restore the Terraform value, wait until the read-only verification reports `UPDATE_COMPLETE` and `100`, then scan again:
+
+```powershell
+aws ecs update-capacity-provider --name driftctl-sprint3-ecs-ec2-capacity --auto-scaling-group-provider "managedScaling={status=ENABLED,targetCapacity=100,minimumScalingStepSize=1,maximumScalingStepSize=1},managedTerminationProtection=DISABLED,managedDraining=ENABLED" --region eu-west-1 --no-cli-pager
+
+aws ecs describe-capacity-providers --region eu-west-1 --profile driftctl-readonly --capacity-providers driftctl-sprint3-ecs-ec2-capacity --query "capacityProviders[0].[name,status,updateStatus,autoScalingGroupProvider.managedScaling.targetCapacity]" --output table
+
+driftctl scan
+```
+
+The final scan should report `0` findings.
+
+![Clean scan after ECS-on-EC2 remediation](screenshots/24-sprint3c1-ecs-ec2-clean-after-remediation.png)
 
 ## Troubleshooting
 
