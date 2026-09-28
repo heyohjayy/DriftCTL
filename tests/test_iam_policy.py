@@ -23,7 +23,7 @@ def test_s3_encryption_uses_the_iam_action_name() -> None:
     assert "s3:GetBucketEncryption" not in actions
 
 
-def test_ecs_and_cloudwatch_logs_collection_permissions_are_read_only() -> None:
+def test_ecs_lambda_and_eventbridge_collection_permissions_are_read_only() -> None:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     actions = {
         action
@@ -46,6 +46,12 @@ def test_ecs_and_cloudwatch_logs_collection_permissions_are_read_only() -> None:
         "ecs:ListTaskDefinitions",
         "logs:DescribeLogGroups",
         "logs:ListTagsForResource",
+        "lambda:GetFunctionConcurrency",
+        "lambda:ListFunctions",
+        "lambda:ListTags",
+        "events:ListRules",
+        "events:ListTagsForResource",
+        "events:ListTargetsByRule",
     } <= actions
     assert all(
         not action.startswith(
@@ -61,6 +67,16 @@ def test_ecs_and_cloudwatch_logs_collection_permissions_are_read_only() -> None:
                 "logs:Create",
                 "logs:Delete",
                 "logs:Put",
+                "lambda:Create",
+                "lambda:Delete",
+                "lambda:Invoke",
+                "lambda:Put",
+                "lambda:Update",
+                "events:Delete",
+                "events:Disable",
+                "events:Enable",
+                "events:Put",
+                "events:Remove",
             )
         )
         for action in actions
