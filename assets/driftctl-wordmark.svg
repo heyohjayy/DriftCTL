@@ -1,3 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 74" role="img" aria-label="DriftCTL">
-  <text x="0" y="60" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="700"><tspan fill="#2563EB">Drift</tspan><tspan fill="#F97316">CTL</tspan></text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 408 104" role="img" aria-labelledby="title desc">
+  <title id="title">DriftCTL</title>
+  <desc id="desc">DriftCTL wordmark with a blue and orange gradient.</desc>
+  <defs>
+    <linearGradient id="driftctl-flow" x1="0%" y1="12%" x2="100%" y2="88%">
+      <stop offset="0%" stop-color="#0B2F71"/>
+      <stop offset="24%" stop-color="#155EEF"/>
+      <stop offset="42%" stop-color="#2F7DFF"/>
+      <stop offset="58%" stop-color="#FF8A1F"/>
+      <stop offset="76%" stop-color="#FF6B17"/>
+      <stop offset="100%" stop-color="#E85D04"/>
+    </linearGradient>
+  </defs>
+  <text x="0" y="84" fill="url(#driftctl-flow)" font-family="Inter, Arial, Helvetica, sans-serif" font-size="96" font-weight="800" letter-spacing="0">DriftCTL</text>
 </svg>
