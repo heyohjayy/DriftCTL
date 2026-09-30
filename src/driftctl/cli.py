@@ -11,11 +11,11 @@ import typer
 
 from driftctl.adapters.boto3_snapshots import adapt_boto3_inventory
 from driftctl.adapters.terraform_state import adapt_terraform_state_with_diagnostics
-from driftctl.audit import write_audit_log
+from driftctl.audit import AuditIntegrityError, write_audit_log
 from driftctl.collectors.aws import AwsCollectionError, collect_live_inventory
 from driftctl.detector import detect_drift
 from driftctl.loaders.terraform_cli import TerraformStateLoadError, load_terraform_state
-from driftctl.models import CollectionDiagnostic, ScanResult
+from driftctl.models import CollectionDiagnostic, Finding, ScanResult, Severity
 from driftctl.reporting import render_markdown, render_terminal
 from driftctl.scan_config import ScanConfig, ScanConfigError, load_scan_config
 from driftctl.scoping import filter_snapshots_by_tag_scope, format_tag_scope, parse_tag_scope
@@ -23,6 +23,8 @@ from driftctl.severity_rules import classify_finding, default_rules
 
 
 app = typer.Typer(help="Read-only Terraform-to-AWS inventory drift control.", no_args_is_help=True)
+
+_SEVERITY_RANK = {Severity.MINOR: 1, Severity.MODERATE: 2, Severity.SEVERE: 3, Severity.CRITICAL: 4}
 
 
 @app.callback()
@@ -40,8 +42,9 @@ def scan(
     role_arn: str | None = typer.Option(None, "--role-arn", help="Optional role to assume before live collection."),
     tag: list[str] = typer.Option([], "--tag", help="Repeatable environment scope in KEY=VALUE form."),
     report: Path | None = typer.Option(None, "--report", help="Markdown report destination."),
-    audit: Path | None = typer.Option(None, "--audit", help="Append-only JSONL audit destination."),
+    audit: Path | None = typer.Option(None, "--audit", help="Tamper-evident JSONL audit destination."),
     config: Path | None = typer.Option(None, "--config", help="Optional driftctl.toml scan configuration."),
+    fail_on: Severity | None = typer.Option(None, "--fail-on", case_sensitive=False, help="Return exit code 2 only for findings at or above this severity."),
 ) -> None:
     """Compare inventories and write findings without modifying infrastructure."""
     try:
@@ -73,10 +76,20 @@ def scan(
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(render_markdown(result), encoding="utf-8")
         event_count = write_audit_log(audit, result)
-    except (AwsCollectionError, OSError, ScanConfigError, TerraformStateLoadError, ValueError, KeyError, json.JSONDecodeError) as error:
-        raise typer.BadParameter(str(error)) from error
+    except (AuditIntegrityError, AwsCollectionError, OSError, ScanConfigError, TerraformStateLoadError, ValueError, KeyError, json.JSONDecodeError) as error:
+        typer.echo(f"Scan failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
     render_terminal(result)
     typer.echo(f"Scan complete: {len(findings)} finding(s); report: {report}; audit events appended: {event_count}")
+    raise typer.Exit(code=_scan_exit_code(findings, fail_on))
+
+
+def _scan_exit_code(findings: list[Finding], fail_on: Severity | None) -> int:
+    if not findings:
+        return 0
+    if fail_on is None:
+        return 2
+    return 2 if any(finding.severity and _SEVERITY_RANK[finding.severity] >= _SEVERITY_RANK[fail_on] for finding in findings) else 0
 
 
 def _resolve_options(

@@ -17,7 +17,7 @@
 
 `DriftCTL` is a read-only Terraform drift-detection and remediation-planning tool for AWS. It helps teams identify and safely resolve Terraform state drift: the common situation where a Terraform-managed environment no longer matches the configuration that exists in AWS.
 
-The tool compares Terraform's recorded expected state with live AWS inventory, identifies the difference, classifies its risk, recommends a safe next action, and records an append-only audit trail. It never runs `terraform apply`, changes Terraform state, or calls AWS mutation APIs.
+The tool compares Terraform's recorded expected state with live AWS inventory, identifies the difference, classifies its risk, recommends a safe next action, and records a tamper-evident audit trail. It never runs `terraform apply`, changes Terraform state, or calls AWS mutation APIs.
 
 ## Platform Capabilities
 
@@ -26,7 +26,7 @@ The tool compares Terraform's recorded expected state with live AWS inventory, i
 | Expected versus live comparison | Loads Terraform state through `terraform show -json`, collects supported AWS configuration through read-only APIs, and compares normalized resource snapshots. |
 | Drift taxonomy | Classifies every finding as `missing`, `unmanaged`, or `modified`, so teams can distinguish deleted resources, AWS-only resources, and changed configuration. |
 | Risk classification | Uses modular severity rules to classify findings as minor, moderate, severe, or critical. Public SSH, RDP, and all-port security-group exposure are treated as critical risks; public RDS exposure and weakened RDS encryption or deletion protection are treated as severe. |
-| Reports and audit history | Produces a Markdown report grouped by resource category and severity, plus append-only JSONL audit events for each scan, finding, and recommendation. |
+| Reports and audit history | Produces a Markdown report grouped by resource category and severity, plus hash-chained JSONL audit events for each scan, finding, and recommendation. |
 | Read-only AWS access | Uses a dedicated least-privilege AWS policy and only `Describe`, `List`, and `Get` collection APIs. The scanner observes and reports; it does not apply remediation. |
 | Environment scoping | Supports repeatable `--tag KEY=VALUE` filters so a scan can focus on one environment without unrelated regional resources creating findings. |
 | Current AWS coverage | EC2 instances, security groups and their inline or standalone Terraform rules, S3 bucket public-access and encryption controls, VPCs, subnets, internet gateways, NAT gateways, route tables, network ACLs, IAM roles and instance profiles, Application Load Balancers, target groups, listeners, listener rules, RDS DB instances, ECS clusters, task definitions and services, Lambda functions, scheduled EventBridge rules and targets, CloudWatch log groups, plus Route 53 hosted zones and records. Unsupported Terraform types are reported as collection diagnostics rather than misclassified as drift. |
