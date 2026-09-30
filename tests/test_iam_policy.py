@@ -23,7 +23,7 @@ def test_s3_encryption_uses_the_iam_action_name() -> None:
     assert "s3:GetBucketEncryption" not in actions
 
 
-def test_ecs_lambda_and_eventbridge_collection_permissions_are_read_only() -> None:
+def test_compute_and_event_collection_permissions_are_read_only() -> None:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     actions = {
         action
@@ -52,6 +52,10 @@ def test_ecs_lambda_and_eventbridge_collection_permissions_are_read_only() -> No
         "events:ListRules",
         "events:ListTagsForResource",
         "events:ListTargetsByRule",
+        "eks:DescribeCluster",
+        "eks:DescribeNodegroup",
+        "eks:ListClusters",
+        "eks:ListNodegroups",
     } <= actions
     assert all(
         not action.startswith(
@@ -77,6 +81,14 @@ def test_ecs_lambda_and_eventbridge_collection_permissions_are_read_only() -> No
                 "events:Enable",
                 "events:Put",
                 "events:Remove",
+                "eks:Associate",
+                "eks:Create",
+                "eks:Delete",
+                "eks:Deregister",
+                "eks:Register",
+                "eks:Tag",
+                "eks:Untag",
+                "eks:Update",
             )
         )
         for action in actions

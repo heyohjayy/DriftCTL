@@ -82,6 +82,17 @@
       "Resource": "*"
     },
     {
+      "Sid": "ReadEksInventory",
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeCluster",
+        "eks:DescribeNodegroup",
+        "eks:ListClusters",
+        "eks:ListNodegroups"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "ReadIamIdentityInventory",
       "Effect": "Allow",
       "Action": [
