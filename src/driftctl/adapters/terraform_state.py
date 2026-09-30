@@ -226,7 +226,24 @@ def _nacl(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSn
 def _acl_entry(v: dict[str, Any]) -> dict[str, Any]: return {"egress": bool(v.get("egress")), "rule_number": v.get("rule_no", v.get("rule_number")), "protocol": str(v.get("protocol")), "action": v.get("rule_action", v.get("action")), "cidr_block": _none_if_blank(v.get("cidr_block")), "ipv6_cidr_block": _none_if_blank(v.get("ipv6_cidr_block"))}
 
 def _role(r: dict[str, Any], v: dict[str, Any], c: dict[str, Any]) -> ResourceSnapshot:
-    inline = [{"name": x.get("name"), "document": _json(x.get("policy"))} for x in v.get("inline_policy", [])] + c.get("inline", []); return ResourceSnapshot(ResourceIdentity("aws", "iam_role", v.get("name") or r["name"]), ResourceCategory.IAM, {"trust_policy": _json(v.get("assume_role_policy")), "managed_policy_arns": sorted(set((v.get("managed_policy_arns") or []) + [x for x in c.get("managed", []) if x])), "inline_policies": sorted(inline, key=repr), "tags": v.get("tags", {})}, r.get("address"))
+    inline = [
+        {"name": x.get("name"), "document": _json(x.get("policy"))}
+        for x in v.get("inline_policy", [])
+    ] + c.get("inline", [])
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "iam_role", v.get("name") or r["name"]),
+        ResourceCategory.IAM,
+        {
+            "trust_policy": _json(v.get("assume_role_policy")),
+            "managed_policy_arns": sorted(set(
+                (v.get("managed_policy_arns") or [])
+                + [x for x in c.get("managed", []) if x]
+            )),
+            "inline_policies": sorted(_deduplicate(inline), key=repr),
+            "tags": v.get("tags", {}),
+        },
+        r.get("address"),
+    )
 
 def _profile(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "iam_instance_profile", v.get("name") or r["name"]), ResourceCategory.IAM, {"roles": sorted([v["role"]] if v.get("role") else v.get("roles", [])), "tags": v.get("tags", {})}, r.get("address"))
 def _zone(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot: return ResourceSnapshot(ResourceIdentity("aws", "route53_hosted_zone", _zone_name(v)), ResourceCategory.OTHER, {"private_zone": bool(v.get("private_zone")) or bool(v.get("vpc")), "tags": v.get("tags", {})}, r.get("address"))

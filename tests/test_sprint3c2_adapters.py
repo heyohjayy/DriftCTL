@@ -187,6 +187,46 @@ def test_matching_lambda_schedule_role_and_logs_have_no_drift() -> None:
     }
 
 
+def test_lambda_role_deduplicates_inline_policy_reported_by_role_and_child() -> None:
+    state = _state()
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Sid": "WriteFunctionLogs",
+            "Effect": "Allow",
+            "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+            "Resource": "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/lambda/driftctl-job:*",
+        }],
+    }
+    role = state["values"]["root_module"]["resources"][0]
+    role["values"]["inline_policy"] = [{
+        "name": "driftctl-lambda-logs",
+        "policy": json.dumps(policy),
+    }]
+    state["values"]["root_module"]["resources"].append({
+        "address": "aws_iam_role_policy.lambda_logs",
+        "mode": "managed",
+        "type": "aws_iam_role_policy",
+        "name": "lambda_logs",
+        "values": {
+            "name": "driftctl-lambda-logs",
+            "role": "driftctl-lambda",
+            "policy": json.dumps(policy),
+        },
+    })
+
+    role_snapshot = next(
+        snapshot
+        for snapshot in adapt_terraform_state_with_diagnostics(state).snapshots
+        if snapshot.identity.resource_type == "iam_role"
+    )
+
+    assert role_snapshot.attributes["inline_policies"] == [{
+        "name": "driftctl-lambda-logs",
+        "document": policy,
+    }]
+
+
 def test_lambda_execution_role_change_has_specific_risk_guidance() -> None:
     live = _live()
     live["LambdaFunctions"][0]["Role"] = "arn:aws:iam::123456789012:role/unapproved"
