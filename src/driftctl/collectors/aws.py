@@ -24,11 +24,13 @@ class AwsInventoryCollector:
         logs_client: Any | None = None,
         lambda_client: Any | None = None,
         events_client: Any | None = None,
+        eks_client: Any | None = None,
     ) -> None:
         self.ec2_client, self.s3_client, self.iam_client, self.route53_client = ec2_client, s3_client, iam_client, route53_client
         self.elbv2_client, self.rds_client = elbv2_client, rds_client
         self.ecs_client, self.logs_client = ecs_client, logs_client
         self.lambda_client, self.events_client = lambda_client, events_client
+        self.eks_client = eks_client
         self.diagnostics: list[dict[str, str]] = []
 
     def collect(self, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
@@ -53,11 +55,13 @@ class AwsInventoryCollector:
                 "LogGroups": self._log_groups(scope) if self.logs_client else [],
                 "LambdaFunctions": self._lambda_functions(scope) if self.lambda_client else [],
                 "EventBridgeRules": self._eventbridge_rules(scope) if self.events_client else [],
+                "EKSClusters": [], "EKSNodegroups": [],
                 "CollectionDiagnostics": self.diagnostics,
             }
             if self.route53_client: inventory["HostedZones"], inventory["RecordSets"] = self._zones(scope)
             if self.elbv2_client: inventory.update(self._load_balancing(scope))
             if self.ecs_client: inventory.update(self._ecs(scope))
+            if self.eks_client: inventory.update(self._eks_inventory(scope))
             return inventory
         except (BotoCoreError, ClientError) as error:
             raise AwsCollectionError(f"Read-only AWS inventory collection failed: {error}") from error
@@ -351,6 +355,49 @@ class AwsInventoryCollector:
                 rules.append(item)
         return rules
 
+    def _eks_inventory(self, scope: dict[str, str]) -> dict[str, list[dict[str, Any]]]:
+        cluster_names = [
+            name
+            for page in self.eks_client.get_paginator("list_clusters").paginate()
+            for name in page.get("clusters", [])
+        ]
+        all_clusters = [
+            self.eks_client.describe_cluster(name=name)["cluster"]
+            for name in cluster_names
+        ]
+        clusters = [
+            cluster
+            for cluster in all_clusters
+            if _matches(cluster.get("tags", {}), scope)
+        ]
+        cluster_tags = {
+            cluster["name"]: cluster.get("tags", {})
+            for cluster in all_clusters
+        }
+
+        node_groups: list[dict[str, Any]] = []
+        for cluster_name in cluster_names:
+            names = [
+                name
+                for page in self.eks_client.get_paginator("list_nodegroups").paginate(
+                    clusterName=cluster_name
+                )
+                for name in page.get("nodegroups", [])
+            ]
+            for name in names:
+                item = dict(
+                    self.eks_client.describe_nodegroup(
+                        clusterName=cluster_name,
+                        nodegroupName=name,
+                    )["nodegroup"]
+                )
+                own_tags = item.get("tags", {})
+                effective_tags = own_tags or cluster_tags.get(cluster_name, {})
+                if _matches(effective_tags, scope):
+                    item["tags"] = effective_tags
+                    node_groups.append(item)
+        return {"EKSClusters": clusters, "EKSNodegroups": node_groups}
+
 
 def collect_live_inventory(profile: str | None, region: str, role_arn: str | None, tag_scope: dict[str, str] | None = None) -> dict[str, Any]:
     session = _session(profile, region, role_arn)
@@ -365,6 +412,7 @@ def collect_live_inventory(profile: str | None, region: str, role_arn: str | Non
         session.client("logs", region_name=region),
         session.client("lambda", region_name=region),
         session.client("events", region_name=region),
+        session.client("eks", region_name=region),
     ).collect(tag_scope)
 
 

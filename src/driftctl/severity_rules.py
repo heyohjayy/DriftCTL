@@ -234,6 +234,48 @@ class EventBridgeScheduleChangeRule:
         )
 
 
+class EksPublicEndpointRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if has_new_eks_public_endpoint_risk(finding):
+            return SeverityDecision(
+                Severity.SEVERE,
+                "EksPublicEndpointRule: the EKS API endpoint is newly reachable from an unrestricted public CIDR.",
+                RemediationRecommendation(
+                    "Restrict EKS control-plane access to approved networks.",
+                    (
+                        "Confirm whether public API access is explicitly required.",
+                        "Prefer private endpoint access or tightly scoped public CIDRs.",
+                        "Reconcile through a reviewed Terraform plan after approval.",
+                    ),
+                ),
+            )
+        return None
+
+
+class EksControlPlaneSecurityChangeRule:
+    def evaluate(self, finding: Finding) -> SeverityDecision | None:
+        if (
+            finding.identity.resource_type == "eks_cluster"
+            and finding.drift_type is DriftType.MODIFIED
+            and {"role_arn", "encryption_config", "access_config"}.intersection(
+                finding.changes
+            )
+        ):
+            return SeverityDecision(
+                Severity.SEVERE,
+                "EksControlPlaneSecurityChangeRule: EKS identity, encryption, or authentication configuration differs from Terraform.",
+                RemediationRecommendation(
+                    "Validate the EKS control-plane security configuration before reconciliation.",
+                    (
+                        "Review the cluster role, secrets-encryption key, and authentication mode.",
+                        "Confirm the intended access model with the cluster owner.",
+                        "Reconcile through a reviewed Terraform plan after approval.",
+                    ),
+                ),
+            )
+        return None
+
+
 class MissingResourceRule:
     def evaluate(self, finding: Finding) -> SeverityDecision | None:
         if finding.drift_type is DriftType.MISSING:
@@ -330,6 +372,34 @@ def has_new_ecs_public_ip_risk(finding: Finding) -> bool:
     return changed_live_network.get("assign_public_ip") is True and expected_network.get("assign_public_ip") is not True
 
 
+def has_new_eks_public_endpoint_risk(finding: Finding) -> bool:
+    if finding.identity.resource_type != "eks_cluster" or not finding.live:
+        return False
+    live_network = finding.live.attributes.get("network", {})
+    live_risk = (
+        live_network.get("endpoint_public_access") is True
+        and any(
+            cidr in {"0.0.0.0/0", "::/0"}
+            for cidr in live_network.get("public_access_cidrs", [])
+        )
+    )
+    if not live_risk:
+        return False
+    if finding.drift_type is DriftType.UNMANAGED:
+        return True
+    if finding.drift_type is not DriftType.MODIFIED or "network" not in finding.changes:
+        return False
+    expected_network = finding.changes["network"].get("expected") or {}
+    expected_risk = (
+        expected_network.get("endpoint_public_access") is True
+        and any(
+            cidr in {"0.0.0.0/0", "::/0"}
+            for cidr in expected_network.get("public_access_cidrs", [])
+        )
+    )
+    return not expected_risk
+
+
 def _public_access_weakened(expected: object, live: object) -> bool:
     if not isinstance(expected, dict) or not isinstance(live, dict):
         return False
@@ -341,7 +411,7 @@ def _generic_remediation() -> RemediationRecommendation:
 
 
 def default_rules() -> list[SeverityRule]:
-    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), EcsPublicIpRule(), LogRetentionChangeRule(), LambdaExecutionRoleChangeRule(), EventBridgeScheduleChangeRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
+    return [DangerousSecurityGroupIngressRule(), UnexpectedPublicRouteRule(), PermissiveNetworkAclRule(), IamAdministratorAccessRule(), RiskyTrustPolicyRule(), S3ProtectionRegressionRule(), RdsPublicAccessRule(), RdsProtectionRegressionRule(), EcsPublicIpRule(), LogRetentionChangeRule(), LambdaExecutionRoleChangeRule(), EventBridgeScheduleChangeRule(), EksPublicEndpointRule(), EksControlPlaneSecurityChangeRule(), DnsRecordChangeRule(), MissingResourceRule(), UnmanagedRiskRule(), TagOnlyRule(), DefaultModifiedRule(), DefaultUnmanagedRule()]
 
 
 def _has_administrator_access(policy_arns: list[str]) -> bool:

@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from driftctl.adapters.eks import cluster_configuration, node_group_configuration
 from driftctl.adapters.ecs import (
     assign_public_ip,
     auto_scaling_group_provider,
@@ -37,6 +38,7 @@ _SUPPORTED = frozenset({
     "aws_ecs_cluster", "aws_ecs_cluster_capacity_providers", "aws_ecs_capacity_provider",
     "aws_ecs_task_definition", "aws_ecs_service", "aws_cloudwatch_log_group",
     "aws_lambda_function", "aws_cloudwatch_event_rule", "aws_cloudwatch_event_target",
+    "aws_eks_cluster", "aws_eks_node_group",
 })
 
 
@@ -104,6 +106,8 @@ def adapt_terraform_state_with_diagnostics(payload: dict[str, Any]) -> Terraform
         elif kind == "aws_ecs_service": snapshots.append(_ecs_service(resource, values, ecs_clusters, ecs_cluster_tags, target_groups))
         elif kind == "aws_cloudwatch_log_group": snapshots.append(_log_group(resource, values))
         elif kind == "aws_lambda_function": snapshots.append(_lambda_function(resource, values))
+        elif kind == "aws_eks_cluster": snapshots.append(_eks_cluster(resource, values))
+        elif kind == "aws_eks_node_group": snapshots.append(_eks_node_group(resource, values))
         elif kind == "aws_cloudwatch_event_rule":
             if values.get("schedule_expression"):
                 key = (
@@ -463,6 +467,30 @@ def _eventbridge_rule(
             v.get("name") or r["name"],
         ),
         ResourceCategory.OTHER,
+        attributes,
+        r.get("address"),
+    )
+
+
+def _eks_cluster(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+    attributes = cluster_configuration(v)
+    attributes["tags"] = v.get("tags", {})
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "eks_cluster", v.get("name") or r["name"]),
+        ResourceCategory.COMPUTE,
+        attributes,
+        r.get("address"),
+    )
+
+
+def _eks_node_group(r: dict[str, Any], v: dict[str, Any]) -> ResourceSnapshot:
+    cluster = v.get("cluster_name") or "unknown"
+    name = v.get("node_group_name") or r["name"]
+    attributes = node_group_configuration(v)
+    attributes["tags"] = v.get("tags", {})
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "eks_managed_node_group", f"{cluster}|{name}"),
+        ResourceCategory.COMPUTE,
         attributes,
         r.get("address"),
     )

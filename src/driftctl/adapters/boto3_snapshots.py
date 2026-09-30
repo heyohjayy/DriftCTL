@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from driftctl.adapters.eks import cluster_configuration, node_group_configuration
 from driftctl.adapters.ecs import (
     assign_public_ip,
     auto_scaling_group_provider,
@@ -70,6 +71,8 @@ def adapt_boto3_inventory(payload: dict[str, Any]) -> list[ResourceSnapshot]:
     snapshots += [_log_group(x) for x in payload.get("LogGroups", [])]
     snapshots += [_lambda_function(x) for x in payload.get("LambdaFunctions", [])]
     snapshots += [_eventbridge_rule(x) for x in payload.get("EventBridgeRules", [])]
+    snapshots += [_eks_cluster(x) for x in payload.get("EKSClusters", [])]
+    snapshots += [_eks_node_group(x) for x in payload.get("EKSNodegroups", [])]
     snapshots += [_role(x) for x in payload.get("IamRoles", [])]
     snapshots += [_profile(x) for x in payload.get("InstanceProfiles", [])]
     zones = [_zone(x) for x in payload.get("HostedZones", [])]; snapshots += zones
@@ -296,6 +299,28 @@ def _eventbridge_rule(x: dict[str, Any]) -> ResourceSnapshot:
             x.get("Name", "unknown"),
         ),
         ResourceCategory.OTHER,
+        attributes,
+    )
+
+
+def _eks_cluster(x: dict[str, Any]) -> ResourceSnapshot:
+    attributes = cluster_configuration(x)
+    attributes["tags"] = _tags(x.get("tags", {}))
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "eks_cluster", x.get("name", "unknown")),
+        ResourceCategory.COMPUTE,
+        attributes,
+    )
+
+
+def _eks_node_group(x: dict[str, Any]) -> ResourceSnapshot:
+    cluster = x.get("clusterName", "unknown")
+    name = x.get("nodegroupName", "unknown")
+    attributes = node_group_configuration(x)
+    attributes["tags"] = _tags(x.get("tags", {}))
+    return ResourceSnapshot(
+        ResourceIdentity("aws", "eks_managed_node_group", f"{cluster}|{name}"),
+        ResourceCategory.COMPUTE,
         attributes,
     )
 

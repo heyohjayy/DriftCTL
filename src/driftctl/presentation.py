@@ -7,7 +7,11 @@ from enum import StrEnum
 from typing import Protocol
 
 from driftctl.models import DriftType, Finding
-from driftctl.severity_rules import has_dangerous_ingress, has_new_ecs_public_ip_risk
+from driftctl.severity_rules import (
+    has_dangerous_ingress,
+    has_new_ecs_public_ip_risk,
+    has_new_eks_public_endpoint_risk,
+)
 
 
 class ImpactLevel(StrEnum):
@@ -127,6 +131,17 @@ class EventBridgeScheduleImpactRule:
         )
 
 
+class EksPublicEndpointImpactRule:
+    def evaluate(self, finding: Finding) -> ImpactAssessment | None:
+        if has_new_eks_public_endpoint_risk(finding):
+            return ImpactAssessment(
+                ImpactLevel.HIGH,
+                ImpactLevel.NONE,
+                ImpactLevel.NOT_ASSESSED,
+            )
+        return None
+
+
 class UnassessedImpactRule:
     def evaluate(self, finding: Finding) -> ImpactAssessment:
         return ImpactAssessment(
@@ -200,6 +215,16 @@ class EventBridgeScheduleExplanationRule:
         return None
 
 
+class EksPublicEndpointExplanationRule:
+    def evaluate(self, finding: Finding) -> FindingExplanation | None:
+        if has_new_eks_public_endpoint_risk(finding):
+            return FindingExplanation(
+                "The EKS Kubernetes API endpoint is reachable from an unrestricted public CIDR.",
+                "This increases control-plane exposure and should be limited to approved administrative networks.",
+            )
+        return None
+
+
 class GenericExplanationRule:
     def evaluate(self, finding: Finding) -> FindingExplanation:
         resource = readable_resource_type(finding.identity.resource_type)
@@ -258,11 +283,11 @@ def remediation_plan(finding: Finding, rules: tuple[RemediationRule, ...] | None
 
 
 def default_impact_rules() -> tuple[ImpactRule, ...]:
-    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsScaledToZeroImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), LambdaExecutionRoleImpactRule(), EventBridgeScheduleImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
+    return (PublicIngressImpactRule(), PublicRdsImpactRule(), EcsScaledToZeroImpactRule(), EcsPublicIpImpactRule(), LogRetentionImpactRule(), LambdaExecutionRoleImpactRule(), EventBridgeScheduleImpactRule(), EksPublicEndpointImpactRule(), TagOnlyImpactRule(), UnassessedImpactRule())
 
 
 def default_explanation_rules() -> tuple[ExplanationRule, ...]:
-    return (PublicIngressExplanationRule(), EcsPublicIpExplanationRule(), LogRetentionExplanationRule(), LambdaExecutionRoleExplanationRule(), EventBridgeScheduleExplanationRule(), TagOnlyExplanationRule(), GenericExplanationRule())
+    return (PublicIngressExplanationRule(), EcsPublicIpExplanationRule(), LogRetentionExplanationRule(), LambdaExecutionRoleExplanationRule(), EventBridgeScheduleExplanationRule(), EksPublicEndpointExplanationRule(), TagOnlyExplanationRule(), GenericExplanationRule())
 
 
 def default_remediation_rules() -> tuple[RemediationRule, ...]:
@@ -296,5 +321,7 @@ def readable_resource_type(resource_type: str) -> str:
         "cloudwatch_log_group": "AWS CloudWatch Log Group",
         "lambda_function": "AWS Lambda Function",
         "eventbridge_scheduled_rule": "AWS EventBridge Scheduled Rule",
+        "eks_cluster": "AWS EKS Cluster",
+        "eks_managed_node_group": "AWS EKS Managed Node Group",
     }
     return labels.get(resource_type, f"AWS {resource_type.replace('_', ' ').title()}")
