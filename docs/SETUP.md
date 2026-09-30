@@ -146,7 +146,21 @@ driftctl scan --expected examples\expected.json --live examples\live.json --repo
 After the scan, DriftCTL creates two files:
 
 - `reports/offline-drift-report.md`: a report grouped by resource type and severity.
-- `audit/offline-events.jsonl`: an append-only audit log. Each line is a JSON event created during the scan.
+- `audit/offline-events.jsonl`: a tamper-evident, hash-chained audit log. Each event records its own SHA-256 hash and the hash of its predecessor. DriftCTL verifies the chain before appending new evidence; a changed or deleted chained event stops the scan with exit code `1`. Existing legacy JSONL files are preserved and cryptographically anchored on the first new scan.
+
+### Scan Exit Codes
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | No drift was found, or findings were below an explicit `--fail-on` threshold. |
+| `1` | The scan could not complete, including because an audit-chain integrity check failed. |
+| `2` | Drift was found. |
+
+By default, any finding returns `2` after the report and audit events are written. To fail only on a chosen severity or higher, use `--fail-on`:
+
+```powershell
+driftctl scan --fail-on severe
+```
 
 > [!NOTE]
 > The files created by this offline example contain only the repository's sample data. A report from a real scan can contain details about your own infrastructure, so review it carefully before sharing it.
