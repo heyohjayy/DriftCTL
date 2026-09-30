@@ -30,5 +30,8 @@ This directory holds the sanitized evidence screenshots used in the project READ
 - `22-sprint3c1-ecs-ec2-clean-baseline.png`: clean baseline after the ECS-on-EC2 validation environment is applied.
 - `23-sprint3c1-ecs-ec2-capacity-provider-drift.png`: custom ECS capacity-provider target capacity changed from 100 to 90 and detected as moderate drift.
 - `24-sprint3c1-ecs-ec2-clean-after-remediation.png`: final clean scan after the capacity-provider target capacity is restored.
+- `25-sprint3c2-lambda-clean-baseline.png`: clean baseline after the Lambda serverless validation environment is applied.
+- `26-sprint3c2-lambda-memory-drift.png`: Lambda memory changed from 128 MB to 256 MB and detected as moderate drift.
+- `27-sprint3c2-lambda-clean-after-remediation.png`: final clean scan after the Lambda memory setting is restored through Terraform.
 
-These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, RDS, ECS on Fargate and EC2, custom capacity providers, and CloudWatch Logs, plus successful final remediation scans.
+These screenshots document local setup, automated tests, an intentional offline demonstration, read-only AWS access, clean live baselines, controlled drift across networking, IAM, Route 53, load balancing, RDS, ECS on Fargate and EC2, custom capacity providers, CloudWatch Logs, Lambda, and scheduled EventBridge rules, plus successful final remediation scans.

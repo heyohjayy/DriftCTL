@@ -664,6 +664,53 @@ The final scan should report `0` findings.
 
 ![Clean scan after ECS-on-EC2 remediation](screenshots/24-sprint3c1-ecs-ec2-clean-after-remediation.png)
 
+### Lambda Serverless Validation
+
+This separate controlled validation demonstrates DriftCTL's serverless comparison support. It compares a Lambda function's configuration, execution role, dedicated CloudWatch log group, and scheduled default-bus EventBridge rule with its target. Lambda code packages, resource-based permissions, and non-scheduled EventBridge rules remain outside this comparison scope.
+
+Run this validation only in a short-lived, non-production environment. The Terraform state must include the Lambda function, execution role, log group, scheduled rule, and target that you intend to scan. Keep the example schedule disabled so the function does not run during baseline or controlled-drift validation.
+
+> [!WARNING]
+> Use an approved administrative identity for the temporary Lambda configuration change below. Do not use the `driftctl-readonly` profile. DriftCTL itself remains read-only; the change deliberately creates a difference for the scanner to report.
+
+Before introducing any change, update the scanning identity with the current `infra/iam/driftctl-read-only-policy.json`. The policy includes the required Lambda and EventBridge inventory calls. Then run `driftctl scan` and confirm a clean baseline with `0` findings.
+
+![Clean Lambda baseline](screenshots/25-sprint3c2-lambda-clean-baseline.png)
+
+### Test 14: Find a Lambda Memory Change
+
+With Terraform expecting `128` MB, temporarily change the function memory to `256` MB:
+
+```powershell
+aws lambda update-function-configuration --function-name driftctl-sprint3-lambda --memory-size 256 --region eu-west-1 --no-cli-pager
+```
+
+Wait until AWS finishes the update:
+
+```powershell
+aws lambda wait function-updated --function-name driftctl-sprint3-lambda --region eu-west-1
+```
+
+Run `driftctl scan`. DriftCTL should report one `modified` `AWS Lambda Function` finding for `memory_size`, showing Terraform value `128` and live value `256`. This configuration difference is reported as `moderate`; the tool does not infer workload-specific security, cost, or availability impact from a memory setting alone.
+
+![Lambda memory drift](screenshots/26-sprint3c2-lambda-memory-drift.png)
+
+Restore the Terraform value through the approved Terraform workflow, then run a final scan:
+
+```powershell
+terraform plan -out="lambda-serverless-remediate.tfplan"
+terraform show -no-color lambda-serverless-remediate.tfplan
+terraform apply "lambda-serverless-remediate.tfplan"
+```
+
+```powershell
+driftctl scan
+```
+
+The final scan should report `0` findings and the green `No drift detected` panel.
+
+![Clean scan after Lambda remediation](screenshots/27-sprint3c2-lambda-clean-after-remediation.png)
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -673,5 +720,5 @@ The final scan should report `0` findings.
 | Terraform state cannot be read | Point DriftCTL at the Terraform working directory that owns the applied state. In that directory, run `terraform show -json` to make sure Terraform can read the state. Do not commit this output because it can contain details about your infrastructure. |
 | `driftctl scan` says it needs a Terraform directory, region, report, or audit path | Make sure `driftctl.toml` is in the current Terraform project folder and includes all required `[scan]` values. You can also use the full command and provide the missing option directly. |
 | A resource is missing from a scoped scan | Check that the resource has every tag listed in your `--tag` options or in the `tags` setting of `driftctl.toml`. Then run `terraform plan` and `terraform apply` if Terraform still needs to add the tag. |
-| A NAT gateway, ALB, RDS, ECS, or CloudWatch Logs resource is not collected | Update the dedicated read-only policy from `infra/iam/driftctl-read-only-policy.json`, attach the new policy version to the scanning identity, then verify the profile can use the required read APIs. |
+| A NAT gateway, ALB, RDS, ECS, Lambda, EventBridge, or CloudWatch Logs resource is not collected | Update the dedicated read-only policy from `infra/iam/driftctl-read-only-policy.json`, attach the new policy version to the scanning identity, then verify the profile can use the required read APIs. |
 | The scan is clean but the expected and live counts differ | Read the collection diagnostics. AWS-managed resources, tag-scoped exclusions, and unsupported Terraform resource types can change counts without representing drift. |
