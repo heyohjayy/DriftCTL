@@ -11,31 +11,41 @@ def cluster_configuration(values: dict[str, Any]) -> dict[str, Any]:
         values.get("kubernetes_network_config", values.get("kubernetesNetworkConfig"))
     )
     access = _first(values.get("access_config", values.get("accessConfig")))
+    endpoint_private_access = bool(
+        vpc.get(
+            "endpoint_private_access",
+            vpc.get("endpointPrivateAccess", False),
+        )
+    )
+    endpoint_public_access = bool(
+        vpc.get(
+            "endpoint_public_access",
+            vpc.get("endpointPublicAccess", True),
+        )
+    )
     return {
         "version": values.get("version"),
         "role_arn": values.get("role_arn", values.get("roleArn")),
         "network": {
-            "subnet_ids": sorted(vpc.get("subnet_ids", vpc.get("subnetIds", []))),
-            "security_group_ids": sorted(
-                vpc.get("security_group_ids", vpc.get("securityGroupIds", []))
+            "subnet_ids": _sorted_list(
+                vpc.get("subnet_ids", vpc.get("subnetIds"))
             ),
-            "endpoint_private_access": bool(
-                vpc.get(
-                    "endpoint_private_access",
-                    vpc.get("endpointPrivateAccess", False),
-                )
+            "security_group_ids": _sorted_list(
+                vpc.get("security_group_ids", vpc.get("securityGroupIds"))
             ),
-            "endpoint_public_access": bool(
-                vpc.get(
-                    "endpoint_public_access",
-                    vpc.get("endpointPublicAccess", True),
+            "endpoint_private_access": endpoint_private_access,
+            "endpoint_public_access": endpoint_public_access,
+            # CIDRs have no effect while the public endpoint is disabled.
+            "public_access_cidrs": (
+                _sorted_list(
+                    vpc.get(
+                        "public_access_cidrs",
+                        vpc.get("publicAccessCidrs"),
+                    ),
+                    default=["0.0.0.0/0"],
                 )
-            ),
-            "public_access_cidrs": sorted(
-                vpc.get(
-                    "public_access_cidrs",
-                    vpc.get("publicAccessCidrs", ["0.0.0.0/0"]),
-                )
+                if endpoint_public_access
+                else []
             ),
         },
         "kubernetes_network": {
@@ -76,9 +86,11 @@ def node_group_configuration(values: dict[str, Any]) -> dict[str, Any]:
     return {
         "cluster_name": values.get("cluster_name", values.get("clusterName")),
         "node_role_arn": values.get("node_role_arn", values.get("nodeRole")),
-        "subnet_ids": sorted(values.get("subnet_ids", values.get("subnets", []))),
-        "instance_types": sorted(
-            values.get("instance_types", values.get("instanceTypes", []))
+        "subnet_ids": _sorted_list(
+            values.get("subnet_ids", values.get("subnets"))
+        ),
+        "instance_types": _sorted_list(
+            values.get("instance_types", values.get("instanceTypes"))
         ),
         "ami_type": values.get("ami_type", values.get("amiType")),
         "capacity_type": values.get(
@@ -96,9 +108,11 @@ def node_group_configuration(values: dict[str, Any]) -> dict[str, Any]:
                 "max_unavailable",
                 update.get("maxUnavailable"),
             ),
-            "max_unavailable_percentage": update.get(
-                "max_unavailable_percentage",
-                update.get("maxUnavailablePercentage"),
+            "max_unavailable_percentage": _none_if_zero(
+                update.get(
+                    "max_unavailable_percentage",
+                    update.get("maxUnavailablePercentage"),
+                )
             ),
         },
         "labels": dict(sorted((values.get("labels") or {}).items())),
@@ -107,10 +121,10 @@ def node_group_configuration(values: dict[str, Any]) -> dict[str, Any]:
             "ec2_ssh_key": _none_if_blank(
                 remote.get("ec2_ssh_key", remote.get("ec2SshKey"))
             ),
-            "source_security_group_ids": sorted(
+            "source_security_group_ids": _sorted_list(
                 remote.get(
                     "source_security_group_ids",
-                    remote.get("sourceSecurityGroups", []),
+                    remote.get("sourceSecurityGroups"),
                 )
             ),
         },
@@ -139,7 +153,7 @@ def _encryption_config(values: Any) -> list[dict[str, Any]]:
     for value in values or []:
         provider = _first(value.get("provider"))
         normalized.append({
-            "resources": sorted(value.get("resources", [])),
+            "resources": _sorted_list(value.get("resources")),
             "key_arn": provider.get("key_arn", provider.get("keyArn")),
         })
     return sorted(normalized, key=repr)
@@ -162,5 +176,15 @@ def _first(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _sorted_list(value: Any, default: list[Any] | None = None) -> list[Any]:
+    if value is None:
+        value = default or []
+    return sorted(value)
+
+
 def _none_if_blank(value: Any) -> Any:
     return None if value in (None, "") else value
+
+
+def _none_if_zero(value: Any) -> Any:
+    return None if value in (None, 0) else value

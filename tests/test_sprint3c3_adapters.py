@@ -162,6 +162,31 @@ def test_matching_eks_cluster_and_node_group_have_no_drift() -> None:
     }
 
 
+def test_optional_eks_network_lists_from_terraform_state_are_null_safe() -> None:
+    state = _state()
+    vpc_config = state["values"]["root_module"]["resources"][0]["values"]["vpc_config"][0]
+    vpc_config["security_group_ids"] = None
+    vpc_config["public_access_cidrs"] = None
+    live = _live()
+    live["EKSClusters"][0]["resourcesVpcConfig"]["securityGroupIds"] = []
+
+    assert detect_drift(
+        adapt_terraform_state_with_diagnostics(state).snapshots,
+        adapt_boto3_inventory(live),
+    ) == []
+
+
+def test_zero_node_group_update_percentage_matches_aws_omission() -> None:
+    state = _state()
+    update_config = state["values"]["root_module"]["resources"][1]["values"]["update_config"][0]
+    update_config["max_unavailable_percentage"] = 0
+
+    assert detect_drift(
+        adapt_terraform_state_with_diagnostics(state).snapshots,
+        adapt_boto3_inventory(_live()),
+    ) == []
+
+
 def test_new_unrestricted_eks_public_endpoint_is_severe() -> None:
     live = _live()
     network = live["EKSClusters"][0]["resourcesVpcConfig"]
