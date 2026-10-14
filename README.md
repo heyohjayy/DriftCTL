@@ -37,7 +37,7 @@ The tool compares Terraform's recorded expected state with live AWS inventory, i
 
 DriftCTL has two ways of being used:
 
-- **Manual Scanning:** Scenario: *(After a Terraform apply, during an investigation, or before an approved change, an engineer runs a read-only scan against the applied Terraform state and the corresponding AWS environment.)* DriftCTL reports supported differences inside the chosen tag scope. It can be used for production or non-production infrastructure when the team applies its normal access controls and change process. (See [Configure Read-Only AWS Access](docs/SETUP.md#configure-read-only-aws-access) and [Run a Live Scan With the Full Command](docs/SETUP.md#run-a-live-scan-with-the-full-command) for the production manual-scanning workflow.)
+- **Manual Scanning:** Scenario: *(After a Terraform apply, during an investigation, or before an approved change, an engineer runs a read-only scan against the applied Terraform state and the corresponding AWS environment.)* DriftCTL reports supported differences inside the chosen tag scope. It can be used for production or non-production infrastructure when the team applies its normal access controls and change process. See the [Usage Guide](docs/USAGE.md) for the complete first-time and repeatable manual-scanning workflow.
 
 - **Scheduled Automation:** A Jenkins pipeline or GitHub Actions workflow runs the same read-only comparison on a team-defined schedule or on demand, retains reports and audit records, and notifies the team about critical findings via Slack. *(P.S. This automation feature is not implemented yet. It is planned as an additional way for teams to use the tool.)*
 
@@ -106,63 +106,93 @@ The Terraform and boto3 adapters convert provider-specific data into common `Res
 
 ## Quick Start
 
-The offline demonstration is the fastest way to see the tool work. It uses included fixture files that resemble Terraform state and boto3 responses, so it does not access an AWS account or require credentials.
-
-Python 3.11 or later is required. After cloning, change into the repository directory before running these commands. They create a `.venv` folder in the current directory, so do not run them from your home directory unless the repository is there.
+[![Quick DriftCTL walkthrough](https://img.shields.io/badge/Quick%20Walkthrough-CLI%20%7C%20Web%20GUI%20%7C%20AI%20Agents-2563EB?style=for-the-badge)](GOOGLE_DRIVE_VIDEO_URL)
 
 > [!NOTE]
-> DriftCTL works from Windows, Linux, and macOS terminals. The commands below are Windows PowerShell examples. Bash and Zsh use a different virtual-environment activation command and Unix-style paths; equivalents appear where the syntax differs.
+> `GOOGLE_DRIVE_VIDEO_URL` is a placeholder. It will be replaced with the public walkthrough link when the video is published.
 
-Create the isolated Python environment:
+DriftCTL is designed to inspect **your existing Terraform-managed AWS environment**. You clone the repository, install the command locally, configure a dedicated read-only AWS identity, and run the scan from your own Terraform project's applied state. Install Git, Python 3.11+, Terraform, and AWS CLI first; the detailed, first-time-user guide is [`docs/USAGE.md`](docs/USAGE.md).
+
+> [!WARNING]
+> Begin with a non-production environment. DriftCTL does not mutate AWS or Terraform, but its reports can contain sensitive infrastructure details.
+
+1. Clone the repository and enter it:
 
 ```powershell
-python -m venv .venv
+git clone https://github.com/heyohjayy/DriftCTL.git
 ```
 
-Windows PowerShell can block local activation scripts. Allow this activation script to run in the current PowerShell window only; this does not change your computer's permanent execution-policy setting:
+```powershell
+cd DriftCTL
+```
+
+2. Create and activate a Python 3.11+ environment.
+
+**Windows PowerShell**
+
+```powershell
+py -3 -m venv .venv
+```
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-Activate the environment in Windows PowerShell:
-
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-In Bash or Zsh on Linux or macOS, activate the same environment with:
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 -m venv .venv
+```
 
 ```bash
 source .venv/bin/activate
 ```
 
-Install the project and development dependencies:
+In either case, first confirm the selected Python version is 3.11 or later.
+
+3. Install DriftCTL:
 
 ```powershell
 python -m pip install -e ".[dev]"
 ```
 
-Run the offline scan using the command for your terminal. In Windows PowerShell:
+4. Attach the dedicated read-only policy from [`infra/iam/driftctl-read-only-policy.json`](infra/iam/driftctl-read-only-policy.json) to an AWS identity such as `driftctl-readonly`. Configure that identity through your approved AWS credential method.
+
+5. In the root of **your own Terraform project**, verify that Terraform can read its applied state.
+
+**Windows PowerShell**
 
 ```powershell
-driftctl scan --expected examples\expected.json --live examples\live.json --report reports\offline-drift-report.md --audit audit\offline-events.jsonl
+terraform show -json | Out-Null
 ```
 
-In Bash or Zsh on Linux or macOS:
+**macOS or Linux (Bash/Zsh)**
 
 ```bash
-driftctl scan --expected examples/expected.json --live examples/live.json --report reports/offline-drift-report.md --audit audit/offline-events.jsonl
+terraform show -json > /dev/null
 ```
 
-The command writes a Markdown report and appends JSONL audit events. This credential-free workflow is useful for local evaluation, development, and CI.
+6. Copy [`examples/driftctl.toml.example`](examples/driftctl.toml.example) to `driftctl.toml` in that Terraform project. Set its AWS profile, region, optional tag scope, report path, and audit path. The full [Usage Guide](docs/USAGE.md#6-choose-your-first-scan) includes the exact configuration and platform-specific copy commands.
 
-For a complete step-by-step guide to using DriftCTL manually, including safe live AWS testing and evidence screenshots, read [the setup and usage guide](docs/SETUP.md).
+7. With the DriftCTL virtual environment still active, work from your Terraform project and scan:
+
+```powershell
+driftctl scan
+```
+
+DriftCTL writes a report and tamper-evident audit evidence, then exits `0` when clean, `2` when it finds drift, or `1` when the scan cannot complete. A finding is evidence for a human decision, never automatic remediation.
+
+No Terraform infrastructure yet? Use the no-cost, disposable [live-usage sample](examples/live-usage/) or the credential-free [offline fixtures](examples/) described in the full [Usage Guide](docs/USAGE.md).
 
 ## Learn More
 
-- [Setup and usage guide](docs/SETUP.md): the complete manual workflow, from installation and offline evaluation to safe live AWS scans, controlled validation, cleanup, and troubleshooting.
+- [Usage guide](docs/USAGE.md): the complete first-time-user workflow for scanning your own Terraform-managed AWS environment.
+- [Controlled validation lab](docs/VALIDATION.md): the project's own non-production test infrastructure, deliberate drift scenarios, evidence screenshots, remediation, and cleanup record.
 - [Terraform infrastructure](infra/terraform/README.md): the version-controlled non-production infrastructure reference used for this project's controlled live validation.
-- [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The setup guide explains how to apply it safely.
+- [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The usage guide explains how to apply it safely.
 - [License](LICENSE): GNU Affero General Public License v3.0 permissions, conditions, and limitations. Modified versions offered to users over a network must provide their corresponding source code under the same license.
 - [Evidence index](docs/screenshots/README.md): screenshots from the offline and controlled live-validation demonstrations.
