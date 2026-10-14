@@ -1,20 +1,22 @@
-# Manual Setup and Usage Guide
+# Controlled Validation Lab and Evidence Guide
 
-This guide shows you how to install and use Infrastructure Drift Control (DriftCTL) manually from a terminal. It begins with a safe example that does not use AWS, then explains how to scan a small non-production AWS environment. Windows PowerShell commands appear first; Bash and Zsh equivalents are included where shell syntax differs on Linux and macOS.
+This guide records the non-production environments, deliberate drift scenarios, remediation checks, cleanup steps, and screenshots used to validate DriftCTL during development. It is an evidence and maintainer-validation guide, not the normal onboarding path for a person using DriftCTL on their own infrastructure.
 
-DriftCTL is read-only. It reads Terraform state and AWS configuration, compares them, writes a report, and suggests what to check next. It does not run `terraform apply`, edit Terraform state, or make changes in AWS.
+For first-time installation and real-world usage against your own Terraform-managed AWS environment, start with [`docs/USAGE.md`](USAGE.md). That guide covers cloning, platform-specific installation, read-only AWS access, Terraform state, configuration, reports, audit evidence, and normal repeatable scans.
 
-> [!NOTE]
-> This guide covers manual scans. It does not configure Jenkins, GitHub Actions, or another automation platform.
+DriftCTL remains read-only throughout every lab: it reads Terraform state and AWS configuration, compares them, writes a report, and suggests what to check next. It does not run `terraform apply`, edit Terraform state, or make changes in AWS. The deliberate changes described below are manually made with a separate approved administrative identity for validation purposes.
+
+> [!WARNING]
+> Do not use this entire guide as a standard production deployment procedure. Some sections create temporary AWS resources or intentionally introduce configuration drift. Follow them only in a dedicated non-production environment, and clean up each temporary resource or change afterward.
 
 ## What You Will Do
 
-1. Download the project and install its Python packages.
-2. Run automated checks to confirm the tool works on your computer.
-3. Run a safe example scan using files included in this repository.
-4. Set up read-only AWS access and scan a Terraform-managed test environment.
-5. Check application-facing infrastructure such as NAT gateways, Application Load Balancers, and RDS DB instances.
-6. Make controlled, temporary changes to see how DriftCTL reports different kinds of real drift.
+1. Prepare the development checkout used to run the validation lab.
+2. Run automated checks before relying on a live comparison.
+3. Confirm the safe fixture demonstration.
+4. Set up a non-production AWS test environment and dedicated read-only scanning identity.
+5. Deliberately introduce controlled differences, record the results, remediate them, and confirm clean baselines.
+6. Remove cost-bearing temporary resources after each applicable lab.
 
 ## Before You Start
 
@@ -25,6 +27,58 @@ Install these tools before beginning:
 - **Terraform**: needed only when scanning real Terraform state.
 - **AWS CLI**: needed only when scanning a real AWS environment.
 - **An AWS account or sandbox environment**: needed only for a live scan. Use a personal, learning, or non-production environment. Do not start with production infrastructure.
+
+Open either PowerShell, a macOS/Linux terminal, or the integrated terminal in VS Code. The terminal you use must be able to run your Terraform backend and approved AWS credentials.
+
+### Install the prerequisites
+
+Run the commands for your operating system one at a time. For package-manager alternatives and additional context, see [Install Required Tools](USAGE.md#3-install-required-tools).
+
+**Windows PowerShell**
+
+```powershell
+winget install --id Git.Git -e --source winget
+```
+
+```powershell
+winget install --id Python.Python.3.11 -e --source winget
+```
+
+```powershell
+winget install --id Hashicorp.Terraform -e --source winget
+```
+
+```powershell
+winget install --id Amazon.AWSCLI -e --source winget
+```
+
+**macOS (Homebrew)**
+
+```bash
+brew install git python hashicorp/tap/terraform awscli
+```
+
+**Linux (Ubuntu or Debian)**
+
+```bash
+sudo apt update && sudo apt install -y git python3 python3-venv curl unzip gpg
+```
+
+```bash
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+```
+
+```bash
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(. /etc/os-release && echo \"$VERSION_CODENAME\") main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+```
+
+```bash
+sudo apt update && sudo apt install -y terraform
+```
+
+```bash
+curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
+```
 
 Check which tools are already installed in your terminal. The following commands work in PowerShell, Bash, and Zsh:
 
@@ -46,27 +100,46 @@ aws --version
 
 You can complete the safe local example even if Terraform or the AWS CLI is not installed yet. You need them only for the live AWS sections later in this guide.
 
-## 1. Clone the Repository
+### Connect the terminal to AWS
 
-Open a terminal in the folder where you keep development projects. Run this command, replacing `<repository-url>` with the HTTPS or SSH address shown under GitHub's **Code** button:
+Before a live lab, configure your approved AWS profile in the same terminal (including the VS Code integrated terminal) that will run the commands. For IAM Identity Center (SSO):
 
 ```powershell
-git clone <repository-url>
+aws configure sso --profile driftctl-readonly
+```
+
+```powershell
+aws sso login --profile driftctl-readonly
+```
+
+```powershell
+aws sts get-caller-identity --profile driftctl-readonly
+```
+
+> [!IMPORTANT]
+> `driftctl-readonly` is a **placeholder**. Replace it with your own dedicated read-only AWS profile. For other credential methods, configure the profile through your organisation's approved process, then use the final verification command above.
+
+## 1. Clone the Repository
+
+Open a terminal in the folder where you keep development projects. Run:
+
+```powershell
+git clone https://github.com/heyohjayy/DriftCTL.git
 ```
 
 Move into the new project folder:
 
 ```powershell
-cd infra-drift-control
+cd DriftCTL
 ```
 
-Unless a step says otherwise, run the remaining commands from the `infra-drift-control` project folder that you just opened with `cd infra-drift-control`.
+Unless a step says otherwise, run the remaining commands from the `DriftCTL` project folder that you just opened with `cd DriftCTL`.
 
 ## 2. Create a Python Environment
 
 A Python virtual environment is a small, isolated folder that holds this project's Python packages. It prevents this project from changing packages used by your other work.
 
-Run these commands one at a time from the `infra-drift-control` folder.
+Run these commands one at a time from the `DriftCTL` folder.
 
 First, check the Python version that will be used:
 
@@ -187,20 +260,19 @@ The full offline demonstration has seven findings, so its evidence is split into
 
 ![Offline drift findings, final section](screenshots/03c-offline-drift-findings-end.png)
 
-## 5. Prepare a Safe Live AWS Demonstration
+## 5. Prepare a Non-Production Validation Environment
 
 Complete this section only after the offline example and tests work when you are evaluating DriftCTL for the first time.
 
-This section supports two paths:
+Use this section only when you want to reproduce or extend DriftCTL's controlled validation evidence. Create a small, disposable non-production environment with the supplied Terraform reference below, then use it to confirm a supported comparison path against your AWS account.
 
-- **First-time evaluation:** If you are trying out the tool to test its effectiveness, create a small, disposable non-production environment with the supplied Terraform reference below, then use it to confirm that DriftCTL works with your AWS account.
-- **Existing production environment:** To directly run a manual scan on your live, production infrastructure and resources, then do not create test infrastructure. Start at [Configure Read-Only AWS Access](#configure-read-only-aws-access), then use [Run a Live Scan With the Full Command](#run-a-live-scan-with-the-full-command), save a local configuration if needed, and limit the scan to the intended environment tag of your infra.
+For routine scans of an existing development, staging, or production Terraform environment, do not create this lab. Follow [`docs/USAGE.md`](USAGE.md) instead.
 
-Use a dedicated AWS sandbox account when possible. If you use one personal account, create a clearly named development environment with small resources that you can safely remove later. Do not point your first live scan at production infrastructure.
+Use a dedicated AWS sandbox account when possible. If you use one personal account, create a clearly named development environment with small resources that you can safely remove later. Do not point this validation lab at production infrastructure.
 
 ### Create Test Infrastructure for a First-Time Evaluation
 
-Use this subsection only for a first-time evaluation. For an existing production environment, Terraform has already applied the infrastructure you want to inspect, so skip this subsection. Use a separate Terraform working directory for evaluation resources. DriftCTL includes a sanitized [live-validation Terraform reference](../infra/terraform/live-validation/README.md) that documents the non-production environment used for this project's controlled tests. You can use that folder as a starting point (`infra/terraform/live-validation/`), or create infrastructure that matches your own learning or non-production needs. A smaller generic example is also available at `infra/terraform/example-infrastructure/`. Terraform source can be version controlled with DriftCTL; Terraform state, local variables, plans, credentials, and generated scan output must remain local.
+Use this subsection only for a first-time validation-lab evaluation. Use a separate Terraform working directory for evaluation resources. DriftCTL includes a sanitized [live-validation Terraform reference](../infra/terraform/live-validation/README.md) that documents the non-production environment used for this project's controlled tests. You can use that folder as a starting point (`infra/terraform/live-validation/`), or create infrastructure that matches your own learning or non-production needs. A smaller generic example is also available at `infra/terraform/example-infrastructure/`. Terraform source can be version controlled with DriftCTL; Terraform state, local variables, plans, credentials, and generated scan output must remain local.
 
 The committed live-validation reference contains the retained VPC, public and private subnets, internet gateway, route tables, private network ACL, IAM role and instance profile, optional EC2 fixture, private Route 53 hosted zone, A record, and an opt-in ECS Fargate configuration used by this project. Earlier controlled validation also created a NAT gateway, Application Load Balancer with target group and listener, and an RDS DB instance. Those chargeable resources were temporary and have been destroyed, so they are not created by the current reference configuration. Start with only the services that make sense for your own learning or non-production environment.
 
@@ -242,7 +314,7 @@ Run `terraform apply` only after you understand and approve the plan. Terraform 
 
 DriftCTL needs permission to look at AWS resources, but it does not need permission to create, update, or delete them. The repository includes a policy at `infra/iam/driftctl-read-only-policy.json`. This policy lists only the AWS read actions DriftCTL needs for its supported services.
 
-This is the same access configuration used for an existing production environment: attach the policy to the approved scanning identity, then point DriftCTL at the matching applied Terraform project and AWS environment.
+For this lab, attach the policy to the dedicated scanning identity, then point DriftCTL at the matching applied Terraform test project and AWS environment.
 
 For a personal learning or sandbox account, the simplest option is to create a dedicated IAM user used only by DriftCTL. Do not use your AWS root user.
 
@@ -280,7 +352,7 @@ The following evidence shows a dedicated read-only profile successfully reading 
 
 ### Run a Live Scan With the Full Command
 
-The command below is the clearest way to see every value DriftCTL needs. *It works for an evaluation environment and for an existing production environment.* Replace the Terraform path, AWS profile, region, and tag with values for the environment you intend to scan. For production, the Terraform path must be the applied project that manages that AWS environment, and the profile must use the approved read-only scanning identity.
+The command below is the clearest way to see every value DriftCTL needs for this validation lab. Replace the Terraform path, AWS profile, Region, and tag with values for the non-production environment you intend to scan.
 
 ```powershell
 driftctl scan --terraform-dir C:\path\to\your\terraform-project --profile driftctl-readonly --region eu-west-1 --tag Project=Test --report reports\aws-drift-report.md --audit audit\events.jsonl
@@ -301,7 +373,7 @@ Route 53 automatically creates two records at the root of every hosted zone: an 
 
 ### Optional: Save the Scan Settings in a Configuration File
 
-The full command above shows every setting DriftCTL needs. Typing it every time can become tiring. If you scan the same Terraform environment regularly, including a production environment, store those settings in one small local file named `driftctl.toml`.
+The full command above shows every setting DriftCTL needs. Typing it every time can become tiring. If you repeat this lab against the same Terraform environment, store those settings in one small local file named `driftctl.toml`.
 
 Put `driftctl.toml` in the top folder of the Terraform project it describes. This is the best place because the file belongs to that one environment, not to the DriftCTL source code. It does not contain credentials. It stores only the Terraform folder, the name of your AWS CLI profile, the AWS region, the tag used to limit the scan, and the report and audit locations.
 
@@ -358,7 +430,7 @@ The paths inside `driftctl.toml` are based on the location of that file, not the
 
 ### Limit a Live Scan to One Environment Tag
 
-AWS accounts often contain resources from several projects or environments. The `--tag KEY=VALUE` option tells DriftCTL to look only at resources with a matching tag. You can use more than one `--tag` option when a resource must match several tags. This is especially important in production, where the selected tag scope should match the environment the team has approved for scanning.
+AWS accounts often contain resources from several projects or environments. The `--tag KEY=VALUE` option tells DriftCTL to look only at resources with a matching tag. You can use more than one `--tag` option when a resource must match several tags. For this lab, the selected tag scope should match only the non-production resources you intend to validate.
 
 DriftCTL applies the tag filter to both Terraform state and live AWS resources. This means resources outside the chosen environment do not create `missing`, `unmanaged`, or `modified` findings. The report records the active tag scope so you can see exactly what was scanned later.
 
