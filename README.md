@@ -160,7 +160,35 @@ In either case, first confirm the selected Python version is 3.11 or later.
 python -m pip install -e ".[dev]"
 ```
 
-4. Attach the dedicated read-only policy from [`infra/iam/driftctl-read-only-policy.json`](infra/iam/driftctl-read-only-policy.json) to an AWS identity such as `driftctl-readonly`. Configure that identity through your approved AWS credential method.
+4. Attach the dedicated read-only policy from [`infra/iam/driftctl-read-only-policy.json`](infra/iam/driftctl-read-only-policy.json) to an AWS identity such as `driftctl-readonly`, then configure that identity for your terminal.
+
+<details>
+<summary><strong>How to create the read-only policy and connect your terminal</strong></summary>
+
+1. In the AWS Console, open **IAM** and choose **Policies**.
+2. Choose **Create policy**, then choose the **JSON** editor.
+3. Open [`infra/iam/driftctl-read-only-policy.json`](infra/iam/driftctl-read-only-policy.json), copy its complete contents, replace the editor contents, then choose **Next**.
+4. Name the policy, for example `DriftCTLReadOnly`, and create it.
+5. Attach it to a dedicated IAM user, IAM role, or IAM Identity Center permission set. Do not attach it to the identity that applies Terraform unless your organisation explicitly requires that arrangement.
+6. Configure a local AWS CLI profile for that identity. For IAM Identity Center (SSO), run the following commands one at a time in your terminal:
+
+```powershell
+aws configure sso --profile driftctl-readonly
+```
+
+```powershell
+aws sso login --profile driftctl-readonly
+```
+
+```powershell
+aws sts get-caller-identity --profile driftctl-readonly
+```
+
+`driftctl-readonly` is an example profile name. Replace it with your own read-only AWS profile name throughout this Quick Start.
+
+> **Warning:** Do not use administrator credentials for scanning. The DriftCTL identity needs only the read-only policy supplied by this repository.
+
+</details>
 
 5. In the root of **your own Terraform project**, verify that Terraform can read its applied state.
 
@@ -176,7 +204,57 @@ terraform show -json | Out-Null
 terraform show -json > /dev/null
 ```
 
-6. Copy [`examples/driftctl.toml.example`](examples/driftctl.toml.example) to `driftctl.toml` in that Terraform project. Set its AWS profile, region, optional tag scope, report path, and audit path. The full [Usage Guide](docs/USAGE.md#6-choose-your-first-scan) includes the exact configuration and platform-specific copy commands.
+6. Copy [`examples/driftctl.toml.example`](examples/driftctl.toml.example) to `driftctl.toml` in that Terraform project, then set its AWS profile, Region, optional tag scope, report path, and audit path.
+
+<details>
+<summary><strong>How to create and edit <code>driftctl.toml</code></strong></summary>
+
+Run one of the following commands from the root of **your Terraform project**. Replace the DriftCTL path with the location where you cloned this repository.
+
+**Windows PowerShell**
+
+```powershell
+Copy-Item "C:\path\to\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+cp /path/to/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+```
+
+`C:\path\to\DriftCTL` and `/path/to/DriftCTL` are placeholders. Replace either with your own cloned repository path.
+
+Open the new file in VS Code, or edit it with any plain-text editor:
+
+```powershell
+code .\driftctl.toml
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+code ./driftctl.toml
+```
+
+If the `code` command is unavailable, open `driftctl.toml` manually in any plain-text editor. Set the values in this example to match your environment:
+
+```toml
+[scan]
+terraform_dir = "."
+aws_profile = "driftctl-readonly"
+region = "us-east-1"
+tags = ["Environment=dev"]
+report = "driftctl-output/live-report.md"
+audit = "driftctl-output/events.jsonl"
+```
+
+- Replace `driftctl-readonly` with your own read-only AWS CLI profile.
+- Replace `us-east-1` with the AWS Region containing your infrastructure.
+- Replace `Environment=dev` with a tag your Terraform resources and live AWS resources have in common, or remove the `tags` line to scan all supported resources in that Region.
+- Leave `terraform_dir`, `report`, and `audit` unchanged for a first scan unless you intentionally need different local paths.
+
+</details>
 
 7. With the DriftCTL virtual environment still active, work from your Terraform project and scan:
 

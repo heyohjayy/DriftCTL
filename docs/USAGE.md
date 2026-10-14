@@ -211,7 +211,27 @@ driftctl --help
 ```
 
 > [!NOTE]
-> On a managed Windows device, an enterprise application-control policy can block the unsigned `driftctl.exe` launcher created by `pip`. If that exact issue occurs, run [`scripts/Enable-WindowsDevCli.ps1`](../scripts/Enable-WindowsDevCli.ps1) once from the DriftCTL repository root, then use the normal `driftctl scan` command. The script does not change AWS, Terraform, or Windows security policy.
+> On a managed Windows device, an enterprise application-control policy can block the unsigned `driftctl.exe` launcher created by `pip`. The steps below apply only when you see that exact launcher-blocking error. They do not change AWS, Terraform, or Windows security policy.
+
+From the DriftCTL repository root, run these commands one at a time in PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+```powershell
+.\scripts\Enable-WindowsDevCli.ps1
+```
+
+```powershell
+driftctl --help
+```
+
+The script creates a local command shim inside this virtual environment. Keep using the normal branded command afterwards:
+
+```powershell
+driftctl scan
+```
 
 ## 5. Prepare AWS Read-Only Access
 
@@ -283,8 +303,7 @@ You need two AWS identities:
 - An **administrative Terraform identity** that can create and later remove the example VPC and security group.
 - The separate read-only scanning identity prepared in [section 5](#5-prepare-aws-read-only-access).
 
-> [!WARNING]
-> Do not run the Terraform commands below with the read-only scanning identity. Review the plan before applying it and destroy the sample immediately after testing.
+> **Warning:** Do not run the Terraform commands below with the read-only scanning identity. Review the plan before applying it and destroy the sample immediately after testing.
 
 Create a folder outside the DriftCTL repository and copy the sample into it.
 
@@ -302,8 +321,7 @@ Copy-Item "C:\path\to\DriftCTL\examples\live-usage\driftctl-example-security-gro
 cd "$HOME\driftctl-live-example"
 ```
 
-> [!IMPORTANT]
-> `C:\path\to\DriftCTL` is a **placeholder**. Replace it with the full path to the DriftCTL folder you cloned in section 4.
+> **Important:** `C:\path\to\DriftCTL` is a **placeholder**. Replace it with the full path to the DriftCTL folder you cloned in section 4.
 
 **macOS or Linux (Bash/Zsh)**
 
@@ -319,8 +337,7 @@ cp /path/to/DriftCTL/examples/live-usage/driftctl-example-security-group.tf ~/dr
 cd ~/driftctl-live-example
 ```
 
-> [!IMPORTANT]
-> `/path/to/DriftCTL` is a **placeholder**. Replace it with the full path to the DriftCTL folder you cloned in section 4.
+> **Important:** `/path/to/DriftCTL` is a **placeholder**. Replace it with the full path to the DriftCTL folder you cloned in section 4.
 
 Set your approved administrative Terraform profile, then create the sample.
 
@@ -336,8 +353,7 @@ $env:AWS_PROFILE = "your-terraform-admin-profile"
 export AWS_PROFILE="your-terraform-admin-profile"
 ```
 
-> [!IMPORTANT]
-> `your-terraform-admin-profile` is a **placeholder**. Replace it with the name of your own approved administrative AWS profile. Do not use `driftctl-readonly` here.
+> **Important:** `your-terraform-admin-profile` is a **placeholder**. Replace it with the name of your own approved administrative AWS profile. Do not use `driftctl-readonly` here.
 
 ```powershell
 terraform init
@@ -355,8 +371,7 @@ terraform show -no-color driftctl-live-example.tfplan
 terraform apply driftctl-live-example.tfplan
 ```
 
-> [!IMPORTANT]
-> `us-east-1` is a **placeholder**. Replace it with the AWS Region where you want to create the disposable example, and use the same Region in its scan configuration below.
+> **Important:** `us-east-1` is a **placeholder**. Replace it with the AWS Region where you want to create the disposable example, and use the same Region in its scan configuration below.
 
 Copy the configuration template into the example directory.
 
@@ -372,10 +387,21 @@ Copy-Item "C:\path\to\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
 cp /path/to/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
 ```
 
-> [!IMPORTANT]
-> `C:\path\to\DriftCTL` and `/path/to/DriftCTL` are **placeholders**. Replace either path with your own cloned DriftCTL directory.
+> **Important:** `C:\path\to\DriftCTL` and `/path/to/DriftCTL` are **placeholders**. Replace either path with your own cloned DriftCTL directory.
 
-Edit `driftctl.toml` to use the read-only profile, Region, and example tag:
+Open `driftctl.toml` in VS Code or another plain-text editor, then replace the example values:
+
+```powershell
+code .\driftctl.toml
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+code ./driftctl.toml
+```
+
+> If the `code` command is unavailable, open `driftctl.toml` manually in any plain-text editor.
 
 ```toml
 [scan]
@@ -387,8 +413,7 @@ report = "driftctl-output/live-report.md"
 audit = "driftctl-output/events.jsonl"
 ```
 
-> [!IMPORTANT]
-> `driftctl-readonly` and `us-east-1` are **placeholders**. Replace them with your own read-only profile name and the Region you chose for the disposable example. Keep `Project=DriftCTLExample` unchanged for this sample.
+> **Important:** `driftctl-readonly` and `us-east-1` are **placeholders**. Replace them with your own read-only profile name and the Region you chose for the disposable example. Keep `Project=DriftCTLExample` unchanged for this sample.
 
 With the DriftCTL Python environment still active, remain in the example directory and run the branded command:
 
@@ -410,8 +435,7 @@ terraform show -no-color driftctl-live-example-destroy.tfplan
 terraform apply driftctl-live-example-destroy.tfplan
 ```
 
-> [!IMPORTANT]
-> `us-east-1` is a **placeholder**. Replace it with the same Region used when you created the disposable example.
+> **Important:** `us-east-1` is a **placeholder**. Replace it with the same Region used when you created the disposable example.
 
 </details>
 
@@ -444,8 +468,7 @@ cd "/path/to/your/terraform-project"
 terraform show -json > /dev/null
 ```
 
-> [!IMPORTANT]
-> `C:\path\to\your\terraform-project` and `/path/to/your/terraform-project` are **placeholders**. Replace them with the local folder that owns the applied Terraform state for the AWS environment you intend to inspect.
+> **Important:** `C:\path\to\your\terraform-project` and `/path/to/your/terraform-project` are **placeholders**. Replace them with the local folder that owns the applied Terraform state for the AWS environment you intend to inspect.
 
 If Terraform cannot read the state, fix that before continuing. For a remote backend, use the same approved backend authentication you normally use with Terraform.
 
@@ -465,10 +488,21 @@ Copy-Item "C:\path\to\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
 cp /path/to/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
 ```
 
-> [!IMPORTANT]
-> `C:\path\to\DriftCTL` and `/path/to/DriftCTL` are **placeholders**. Replace them with the full local path to your cloned DriftCTL repository.
+> **Important:** `C:\path\to\DriftCTL` and `/path/to/DriftCTL` are **placeholders**. Replace them with the full local path to your cloned DriftCTL repository.
 
-Edit `driftctl.toml` and replace the example values:
+Open `driftctl.toml` in VS Code or another plain-text editor, then replace the example values:
+
+```powershell
+code .\driftctl.toml
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+code ./driftctl.toml
+```
+
+> If the `code` command is unavailable, open `driftctl.toml` manually in any plain-text editor.
 
 ```toml
 [scan]
@@ -489,10 +523,20 @@ audit = "driftctl-output/events.jsonl"
 | `report` | A local Markdown report path. |
 | `audit` | A local JSONL audit-log path. |
 
-> [!IMPORTANT]
-> If you use `tags`, both the Terraform-managed resource and the live AWS resource must have every listed tag. A tag filter is a safety boundary: resources outside it will not be evaluated as drift.
+> **Important:** If you use `tags`, both the Terraform-managed resource and the live AWS resource must have every listed tag. A tag filter is a safety boundary: resources outside it will not be evaluated as drift.
 
-Add `driftctl-output/`, reports, audit logs, and credentials to your Terraform project's `.gitignore`. They can contain account-specific details.
+<details>
+<summary><strong>Optional: keep local scan evidence out of Git</strong></summary>
+
+This is not required to run DriftCTL. Add these paths to `.gitignore` only if your Terraform project is stored in Git and you do not want local reports or audit logs committed. They can contain account-specific infrastructure details.
+
+```gitignore
+driftctl-output/
+reports/*.md
+audit/*.jsonl
+```
+
+</details>
 
 ### Run the scan
 
@@ -520,8 +564,7 @@ driftctl scan --terraform-dir "C:\path\to\your\terraform-project" --profile drif
 driftctl scan --terraform-dir "/path/to/your/terraform-project" --profile driftctl-readonly --region us-east-1 --tag Environment=dev --report "/path/to/your/terraform-project/driftctl-output/live-report.md" --audit "/path/to/your/terraform-project/driftctl-output/events.jsonl"
 ```
 
-> [!IMPORTANT]
-> Every path, `driftctl-readonly`, `us-east-1`, and `Environment=dev` in these two commands is a **placeholder**. Replace each with the directory, read-only AWS profile, AWS Region, and optional tag scope for your own environment.
+> **Important:** Every path, `driftctl-readonly`, `us-east-1`, and `Environment=dev` in these two commands is a **placeholder**. Replace each with the directory, read-only AWS profile, AWS Region, and optional tag scope for your own environment.
 
 </details>
 
@@ -538,6 +581,33 @@ driftctl scan --terraform-dir "/path/to/your/terraform-project" --profile driftc
 | `missing` | Terraform expects a resource that is absent from AWS inventory. |
 | `unmanaged` | AWS has an in-scope resource Terraform does not manage. |
 | `modified` | Terraform and AWS both identify the resource, but one or more supported settings differ. |
+
+### What a finding tells you
+
+For every finding, DriftCTL shows both the difference and the information needed to decide what should happen next. It does not decide or apply the change for you.
+
+| Finding field | What it means |
+| --- | --- |
+| **Severity** | The urgency level calculated from the changed resource and setting. |
+| **Explanation** | Why DriftCTL identified a difference and why its rule selected that severity. |
+| **Changed attributes** | The supported settings that differ. |
+| **Expected values** | What Terraform's applied state records. |
+| **Current/live values** | What DriftCTL read from AWS. |
+| **Security, cost, and availability impact** | Assessed impact where the rule can safely determine one; otherwise it remains `NOT ASSESSED`. |
+| **Recommended next action** | A human review action, not an automatic fix. |
+| **Remediation plan** | Suggested review steps and the approved-change path. |
+
+### Severity levels
+
+| Severity | Meaning | Typical examples |
+| --- | --- | --- |
+| `MINOR` | Lower-risk metadata or operational difference. | Tags differ, or log retention increased rather than weakened. |
+| `MODERATE` | Meaningful configuration difference requiring review. | A DNS record, Lambda memory setting, or ordinary unmanaged resource differs. |
+| `SEVERE` | A missing Terraform-managed resource or a security/availability control may have weakened. | Public RDS access, weakened encryption or deletion protection, an unsafe private route, or an EKS control-plane security change. |
+| `CRITICAL` | Immediate high-risk exposure or broad privilege escalation. | Public SSH/RDP or all-port security-group ingress, or IAM administrative access added outside Terraform. |
+
+> [!NOTE]
+> Severity is a prioritisation signal, not a substitute for your organisation's incident process. Read the explanation, impacts, expected and live values, and recommended next action together before deciding whether AWS or Terraform is the intended state.
 
 > [!WARNING]
 > A DriftCTL finding is evidence for review, not permission for automatic remediation. Decide whether the desired correction belongs in Terraform or AWS, get required approval, and make the change through your approved process.
