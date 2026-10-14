@@ -5,6 +5,18 @@ from pathlib import Path
 POLICY_PATH = (
     Path(__file__).parents[1] / "infra" / "iam" / "driftctl-read-only-policy.json"
 )
+SAMPLE_POLICY_PATH = (
+    Path(__file__).parents[1]
+    / "examples"
+    / "live-usage"
+    / "driftctl-read-only-policy.json"
+)
+
+
+def test_disposable_example_uses_the_current_read_only_policy() -> None:
+    assert json.loads(SAMPLE_POLICY_PATH.read_text(encoding="utf-8")) == json.loads(
+        POLICY_PATH.read_text(encoding="utf-8")
+    )
 
 
 def test_s3_encryption_uses_the_iam_action_name() -> None:
