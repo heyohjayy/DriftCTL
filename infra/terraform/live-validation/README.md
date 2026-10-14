@@ -34,4 +34,4 @@ terraform plan
 
 The local `terraform.tfvars`, Terraform state, plans, and `.terraform` provider cache are ignored by Git. Do not place credentials or personal network values in committed files.
 
-After applying the configuration, use the same `Project` tag value in the DriftCTL scan scope. The full manual workflow is in [the setup guide](../../../docs/SETUP.md).
+After applying the configuration, use the same `Project` tag value in the DriftCTL scan scope. The full manual workflow is in [the controlled validation guide](../../../docs/VALIDATION.md).

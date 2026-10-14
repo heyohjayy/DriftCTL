@@ -20,4 +20,4 @@ The configuration is a starting point for a dedicated learning or non-production
 
 The default configuration creates the shared network foundation only. The optional EC2 fixture is disabled by default, and chargeable application infrastructure is not included. This keeps a fresh review from creating NAT, load-balancing, or database costs unexpectedly.
 
-For the full manual validation workflow, including read-only AWS access, tag-scoped scans, controlled-drift tests, and cleanup guidance, see [the setup guide](../../docs/SETUP.md).
+For the full manual validation workflow, including read-only AWS access, tag-scoped scans, controlled-drift tests, and cleanup guidance, see [the controlled validation guide](../../docs/VALIDATION.md).

@@ -17,7 +17,7 @@
 
 `DriftCTL` is a read-only Terraform drift-detection and remediation-planning tool for AWS. It helps teams identify and safely resolve Terraform state drift: the common situation where a Terraform-managed environment no longer matches the configuration that exists in AWS.
 
-The tool compares Terraform's recorded expected state with live AWS inventory, identifies the difference, classifies its risk, recommends a safe next action, and records a tamper-evident audit trail. It never runs `terraform apply`, changes Terraform state, or calls AWS mutation APIs.
+The tool compares Terraform's recorded expected state with live AWS inventory, identifies the difference, classifies its risk, recommends a safe next action, and records a hash-chained audit trail. It never runs `terraform apply`, changes Terraform state, or calls AWS mutation APIs.
 
 ## Platform Capabilities
 
@@ -41,7 +41,7 @@ DriftCTL has two ways of being used:
 
 - **Scheduled Automation:** A Jenkins pipeline or GitHub Actions workflow runs the same read-only comparison on a team-defined schedule or on demand, retains reports and audit records, and notifies the team about critical findings via Slack. *(P.S. This automation feature is not implemented yet. It is planned as an additional way for teams to use the tool.)*
 
-The optional controlled-validation sections in the setup guide document how this project verified real detection behavior in a non-production environment. They are not a third operating mode and are not required before using DriftCTL in production. In routine use, DriftCTL reports whatever supported drift already exists; it does not expect a team to create drift first.
+The optional controlled-validation sections in the validation guide document how this project verified real detection behavior in a non-production environment. They are not a third operating mode and are not required before using DriftCTL in production. In routine use, DriftCTL reports whatever supported drift already exists; it does not expect a team to create drift first.
 
 > [!NOTE]
 > DriftCTL reads applied Terraform state with `terraform show -json`. It does not run `terraform init`, `terraform plan`, `terraform apply`, or `terraform refresh`, and it does not call AWS APIs that create, update, or delete resources.
@@ -91,7 +91,7 @@ terraform plan -> human review and approval -> terraform apply
                           +------------------------+------------------------+
                           |                                                 |
                           v                                                 v
-          Markdown report grouped by category and severity     Append-only JSONL audit history
+          Markdown report grouped by category and severity     Hash-chained JSONL audit history
                           |                                                 |
                           +------------------------+------------------------+
                                                    |
@@ -170,15 +170,47 @@ python -m pip install -e ".[dev]"
 3. Open [`infra/iam/driftctl-read-only-policy.json`](infra/iam/driftctl-read-only-policy.json), copy its complete contents, replace the editor contents, then choose **Next**.
 4. Name the policy, for example `DriftCTLReadOnly`, and create it.
 5. Attach it to a dedicated IAM user, IAM role, or IAM Identity Center permission set. Do not attach it to the identity that applies Terraform unless your organisation explicitly requires that arrangement.
-6. Configure a local AWS CLI profile for that identity. For IAM Identity Center (SSO), run the following commands one at a time in your terminal:
+6. Choose the AWS credential method your environment already uses:
+   - **IAM Identity Center (SSO):** use this only if your organization provides an AWS access portal URL and SSO Region.
+   - **Dedicated shared AWS CLI profile:** use this in a personal or learning account that permits programmatic IAM-user credentials.
+   - **Existing approved profile or assumed role:** use it directly; do not reconfigure it.
+
+<details>
+<summary><strong>Option A: IAM Identity Center (SSO)</strong></summary>
+
+Use this only when your organization provides IAM Identity Center access. An administrator can find the portal URL in AWS Console under **IAM Identity Center** > **Settings** > **AWS access portal URL**. It usually looks like `https://d-xxxxxxxxxx.awsapps.com/start`; it is not the normal AWS Console URL. Then run:
 
 ```powershell
 aws configure sso --profile driftctl-readonly
 ```
 
+At the interactive prompts, use a local session name such as `driftctl-sso`, paste the access portal URL, select the SSO Region supplied by your organization, accept the default `sso:account:access` registration scope unless instructed otherwise, then select the account and read-only role your administrator assigned. Choose the AWS Region that contains the infrastructure you plan to scan as the profile's default Region.
+
 ```powershell
 aws sso login --profile driftctl-readonly
 ```
+
+</details>
+
+<details>
+<summary><strong>Option B: Dedicated shared AWS CLI profile</strong></summary>
+
+Use this in a personal or learning account only when programmatic IAM-user credentials are permitted. Run the following and enter only credentials for the read-only identity. Do not record or share the requested access key or secret key:
+
+```powershell
+aws configure --profile driftctl-readonly
+```
+
+</details>
+
+<details>
+<summary><strong>Option C: Existing approved profile or assumed role</strong></summary>
+
+Use the existing profile or role name directly. Do not run either configuration command above.
+
+</details>
+
+7. Verify the chosen profile:
 
 ```powershell
 aws sts get-caller-identity --profile driftctl-readonly
@@ -262,7 +294,7 @@ audit = "driftctl-output/events.jsonl"
 driftctl scan
 ```
 
-DriftCTL writes a report and tamper-evident audit evidence, then exits `0` when clean, `2` when it finds drift, or `1` when the scan cannot complete. A finding is evidence for a human decision, never automatic remediation.
+DriftCTL writes a report and hash-chained audit evidence, then exits `0` when clean, `2` when it finds drift, or `1` when the scan cannot complete. A finding is evidence for a human decision, never automatic remediation.
 
 No Terraform infrastructure yet? Use the no-cost, disposable [live-usage sample](examples/live-usage/) or the credential-free [offline fixtures](examples/) described in the full [Usage Guide](docs/USAGE.md).
 
@@ -272,5 +304,6 @@ No Terraform infrastructure yet? Use the no-cost, disposable [live-usage sample]
 - [Controlled validation lab](docs/VALIDATION.md): the project's own non-production test infrastructure, deliberate drift scenarios, evidence screenshots, remediation, and cleanup record.
 - [Terraform infrastructure](infra/terraform/README.md): the version-controlled non-production infrastructure reference used for this project's controlled live validation.
 - [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The usage guide explains how to apply it safely.
+- [Changelog](CHANGELOG.md): release history and the current release's known boundaries.
 - [License](LICENSE): GNU Affero General Public License v3.0 permissions, conditions, and limitations. Modified versions offered to users over a network must provide their corresponding source code under the same license.
 - [Evidence index](docs/screenshots/README.md): screenshots from the offline and controlled live-validation demonstrations.

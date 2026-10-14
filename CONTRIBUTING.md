@@ -11,14 +11,14 @@ Areas where help is especially valuable include:
 - Support for additional AWS resource types through Terraform adapters, read-only AWS collectors, normalization, detection rules, and tests.
 - Severity, impact, explanation, and remediation policies that remain conservative when the available data cannot establish risk reliably.
 - Test fixtures and regression tests for Terraform-state or AWS-inventory edge cases.
-- Documentation improvements, including setup guidance, production scanning guidance, and sanitized validation evidence.
+- Documentation improvements, including first-use guidance, production scanning guidance, and sanitized validation evidence.
 - Non-production validation infrastructure that is short-lived, cost-aware, and easy to clean up.
 
 ## Before You Start
 
 Open or review an issue before beginning a substantial change so the scope and intended behavior are clear. Do not include AWS credentials, Terraform state, private infrastructure details, or unredacted screenshots in an issue, branch, commit, or pull request.
 
-DriftCTL is strictly read-only. Contributions must not add AWS mutation APIs or make DriftCTL run `terraform init`, `terraform plan`, `terraform apply`, or `terraform refresh`.
+DriftCTL is strictly read-only. Contributions must not add AWS mutation APIs or make DriftCTL run `terraform init`, `terraform plan`, `terraform apply`, or `terraform refresh`. Keep infrastructure creation, controlled drift, remediation, and teardown in separately documented validation workflows using an approved administrative identity.
 
 ## Development Workflow
 
@@ -35,7 +35,7 @@ DriftCTL is strictly read-only. Contributions must not add AWS mutation APIs or 
    git switch -c feature/short-description
    ```
 
-3. Create and activate a Python virtual environment. Follow the terminal-specific instructions in the [setup guide](docs/SETUP.md).
+3. Create and activate a Python virtual environment. Follow the terminal-specific instructions in the [Usage Guide](docs/USAGE.md#4-clone-and-install-driftctl).
 
 4. Install the project and development dependencies:
 
@@ -45,7 +45,7 @@ DriftCTL is strictly read-only. Contributions must not add AWS mutation APIs or 
 
 5. Make the smallest change that solves the stated problem. Keep provider-specific parsing in adapters and keep comparison logic independent of raw Terraform or boto3 response formats.
 
-6. Add or update tests for every behavior change. Run the full suite:
+6. Add or update tests for every behavior change. New supported resource types need Terraform adaptation, live AWS collection, classification, and regression coverage. Run the full suite:
 
    ```bash
    python -m pytest

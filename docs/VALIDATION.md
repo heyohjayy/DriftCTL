@@ -80,14 +80,22 @@ sudo apt update && sudo apt install -y terraform
 curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
 ```
 
-Check which tools are already installed in your terminal. The following commands work in PowerShell, Bash, and Zsh:
+Check which tools are already installed in your terminal:
 
 ```powershell
 git --version
 ```
 
+**Windows PowerShell**
+
 ```powershell
-python --version
+py -3 --version
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 --version
 ```
 
 ```powershell
@@ -102,15 +110,7 @@ You can complete the safe local example even if Terraform or the AWS CLI is not 
 
 ### Connect the terminal to AWS
 
-Before a live lab, configure your approved AWS profile in the same terminal (including the VS Code integrated terminal) that will run the commands. For IAM Identity Center (SSO):
-
-```powershell
-aws configure sso --profile driftctl-readonly
-```
-
-```powershell
-aws sso login --profile driftctl-readonly
-```
+Before a live lab, configure your approved AWS profile in the same terminal (including the VS Code integrated terminal) that will run the commands. Choose the appropriate SSO, dedicated shared-profile, or existing-profile path in [the Usage Guide](USAGE.md#5-prepare-aws-read-only-access). Do not run `aws configure sso` unless your organization provides IAM Identity Center access, including an access portal URL and SSO Region.
 
 ```powershell
 aws sts get-caller-identity --profile driftctl-readonly
@@ -141,16 +141,32 @@ A Python virtual environment is a small, isolated folder that holds this project
 
 Run these commands one at a time from the `DriftCTL` folder.
 
-First, check the Python version that will be used:
+First, check the Python version that will be used. Use the command for your operating system:
+
+**Windows PowerShell**
 
 ```powershell
-python --version
+py -3 --version
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 --version
 ```
 
 Create the virtual environment. This creates a `.venv` folder inside the project:
 
+**Windows PowerShell**
+
 ```powershell
-python -m venv .venv
+py -3 -m venv .venv
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 -m venv .venv
 ```
 
 In Windows PowerShell, Windows may block local activation scripts by default. The next command allows the local activation script to run in this PowerShell window only. It does not permanently change your computer's security settings:
@@ -175,14 +191,30 @@ When activation works, your terminal prompt starts with `(.venv)`. Keep this ter
 
 Update `pip`, the Python package installer:
 
+**Windows PowerShell**
+
 ```powershell
 python -m pip install --upgrade pip
 ```
 
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 -m pip install --upgrade pip
+```
+
 Install DriftCTL and the development packages used by its tests:
+
+**Windows PowerShell**
 
 ```powershell
 python -m pip install -e ".[dev]"
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 -m pip install -e ".[dev]"
 ```
 
 The `-e` option means “editable.” It lets your local copy use changes in the `src/` folder immediately, without reinstalling the package after every code change.
@@ -219,7 +251,7 @@ driftctl scan --expected examples\expected.json --live examples\live.json --repo
 After the scan, DriftCTL creates two files:
 
 - `reports/offline-drift-report.md`: a report grouped by resource type and severity.
-- `audit/offline-events.jsonl`: a tamper-evident, hash-chained audit log. Each event records its own SHA-256 hash and the hash of its predecessor. DriftCTL verifies the chain before appending new evidence; a changed or deleted chained event stops the scan with exit code `1`. Existing legacy JSONL files are preserved and cryptographically anchored on the first new scan.
+- `audit/offline-events.jsonl`: a hash-chained audit log. Each event records its own SHA-256 hash and the hash of its predecessor. DriftCTL verifies retained chain history before appending new evidence; a changed or missing event inside that retained history stops the scan with exit code `1`. Existing legacy JSONL files are preserved and cryptographically anchored on the first new scan. A local chain cannot prove that someone removed the whole log or its final entries; retain reports and audit artifacts outside the scanned workstation for independent evidence.
 
 ### Scan Exit Codes
 

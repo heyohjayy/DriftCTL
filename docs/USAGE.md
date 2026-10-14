@@ -126,14 +126,22 @@ curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
 
 ### Verify the tools
 
-Run each command separately in your chosen terminal. `python` might be `python3` on macOS or Linux.
+Run each command separately in your chosen terminal.
 
 ```powershell
 git --version
 ```
 
+**Windows PowerShell**
+
 ```powershell
-python --version
+py -3 --version
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 --version
 ```
 
 ```powershell
@@ -145,7 +153,7 @@ aws --version
 ```
 
 > [!WARNING]
-> Do not continue if Python reports a version older than 3.11. Install a supported Python version, then open a new terminal and verify it again.
+> Do not continue if Python reports a version older than 3.11. Install a supported Python version, then open a new terminal and verify it again. Do not run Windows-only `py` commands in macOS or Linux terminals.
 
 ## 4. Clone and Install DriftCTL
 
@@ -172,7 +180,7 @@ py -3 -m venv .venv
 ```
 
 > [!NOTE]
-> If the `py` launcher is unavailable, use `python -m venv .venv` after confirming `python --version` is 3.11 or later.
+> If the Windows `py` launcher is unavailable, use `python -m venv .venv` after confirming `python --version` is 3.11 or later. Do not use this Windows command on macOS or Linux.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -196,7 +204,9 @@ When activation succeeds, your terminal prompt starts with `(.venv)`.
 
 ### 4.3 Install the tool
 
-With the virtual environment active, run these commands one at a time on every platform:
+With the virtual environment active, run the commands for your platform one at a time:
+
+**Windows PowerShell**
 
 ```powershell
 python -m pip install --upgrade pip
@@ -207,6 +217,20 @@ python -m pip install -e ".[dev]"
 ```
 
 ```powershell
+driftctl --help
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+python3 -m pip install --upgrade pip
+```
+
+```bash
+python3 -m pip install -e ".[dev]"
+```
+
+```bash
 driftctl --help
 ```
 
@@ -227,11 +251,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 driftctl --help
 ```
 
-The script creates a local command shim inside this virtual environment. Keep using the normal branded command afterwards:
-
-```powershell
-driftctl scan
-```
+The script creates a local command shim inside this virtual environment. It makes the normal `driftctl` command available; do not run `driftctl scan` yet. A scan needs either the offline fixtures or a configured Terraform project, both covered in section 6.
 
 ## 5. Prepare AWS Read-Only Access
 
@@ -245,19 +265,58 @@ Complete this section before either live-scan option in the next section. DriftC
 > [!WARNING]
 > Do not use administrator credentials for scanning. Do not add `Create`, `Update`, `Delete`, `Put`, `Attach`, `Detach`, `PassRole`, or Terraform permissions to the DriftCTL scanning identity.
 
-### Connect your terminal to AWS
+### Choose an AWS CLI credential method
 
-For IAM Identity Center (SSO), configure a named profile, then sign in:
+Choose one approved path before running any command below. Do not start the SSO setup unless your organization uses IAM Identity Center.
+
+<details>
+<summary><strong>Option A: IAM Identity Center (SSO) - preferred when your organization provides it</strong></summary>
+
+Obtain your organization's **AWS access portal URL** and **SSO Region** first. An AWS administrator can find the portal URL in the AWS Console under **IAM Identity Center** > **Settings** > **AWS access portal URL**. It usually looks like `https://d-xxxxxxxxxx.awsapps.com/start`; it is not the normal AWS Console URL. If you are not an AWS administrator, ask the person who manages IAM Identity Center for these values and for a read-only role assignment.
 
 ```powershell
 aws configure sso --profile driftctl-readonly
 ```
 
+Complete the prompts as follows:
+
+| AWS CLI prompt | What to enter |
+| --- | --- |
+| `SSO session name` | A local label such as `driftctl-sso`. It does not create an AWS resource. |
+| `SSO start URL` | Paste your organization's AWS access portal URL. |
+| `SSO region` | The Region where your organization enabled IAM Identity Center. This can differ from the Region that holds your infrastructure. |
+| `SSO registration scopes` | Press Enter to accept `sso:account:access` unless your administrator gives a different value. |
+| Account and role | Select the account and dedicated read-only role or permission set assigned to you. |
+| CLI default client Region | Select the Region containing the infrastructure you want DriftCTL to scan. |
+| CLI default output format | Press Enter for the default, or choose `json`. |
+
 ```powershell
 aws sso login --profile driftctl-readonly
 ```
 
-For an existing shared profile, verify the identity instead. This works in PowerShell, Bash, and Zsh:
+</details>
+
+<details>
+<summary><strong>Option B: Dedicated shared AWS CLI profile - common for personal or learning accounts</strong></summary>
+
+Use this only when your account uses programmatic IAM-user credentials and your organization permits access keys. Run:
+
+```bash
+aws configure --profile driftctl-readonly
+```
+
+The AWS CLI asks for an access key ID, secret access key, default Region, and output format. Enter credentials for the **dedicated read-only IAM identity** from this section, not your administrator identity. Keep the access key and secret out of recordings, screenshots, Git, chat messages, and `driftctl.toml`. Use the Region containing the Terraform-managed infrastructure you will scan; press Enter for the default output format or enter `json`.
+
+</details>
+
+<details>
+<summary><strong>Option C: Existing approved profile or assumed role</strong></summary>
+
+If your organization already configured a read-only AWS CLI profile or role on this machine, do not run either configuration command above. Use that profile name in `driftctl.toml`, then verify it below.
+
+</details>
+
+After completing the one option that applies to you, verify the identity. This works in PowerShell, Bash, and Zsh:
 
 ```powershell
 aws sts get-caller-identity --profile driftctl-readonly
@@ -620,7 +679,7 @@ Keep the same `driftctl.toml` in your Terraform project. Activate the DriftCTL e
 driftctl scan
 ```
 
-Use a separate report and audit destination per environment. Keep each audit file append-only; DriftCTL checks its hash chain before appending new events.
+Use a separate report and audit destination per environment. Keep each audit file append-only; DriftCTL checks retained hash-chain history before appending new events. For independent evidence against deletion of an entire local file or its final entries, retain reports and audit artifacts outside the workstation that writes them.
 
 To return code `2` only for severe or critical findings, run:
 
