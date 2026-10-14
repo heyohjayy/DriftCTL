@@ -2,6 +2,9 @@
 
 This guide is for a first-time user who wants to run DriftCTL against their own Terraform-managed AWS environment. It starts with installing the required tools, connects a local terminal to AWS through a read-only identity, and ends with a repeatable scan.
 
+> [!TIP]
+> Using Ubuntu or another Debian-based Linux machine and want one direct, recordable path with the disposable example? Start with the [Linux quick walkthrough](LINUX_USAGE.md). This guide remains the cross-platform reference for all supported first-scan paths.
+
 DriftCTL compares **applied Terraform state** with the corresponding live AWS configuration. It writes a Markdown report and a tamper-evident JSONL audit log. It never runs `terraform apply`, modifies Terraform state, or calls AWS mutation APIs.
 
 > [!WARNING]
@@ -301,11 +304,22 @@ aws sso login --profile driftctl-readonly
 
 Use this only when your account uses programmatic IAM-user credentials and your organization permits access keys. Run:
 
+Before running it, obtain the credentials from **AWS Console** > **IAM** > **Users** > select the dedicated read-only user > **Security credentials** > **Access keys** > **Create access key**. Select **Command Line Interface (CLI)**, then copy the access key ID and secret access key when AWS displays them. AWS shows the secret access key only once.
+
 ```bash
 aws configure --profile driftctl-readonly
 ```
 
-The AWS CLI asks for an access key ID, secret access key, default Region, and output format. Enter credentials for the **dedicated read-only IAM identity** from this section, not your administrator identity. Treat the access key and secret access key as private credentials: never share them, do not put them in Git, chat messages, or `driftctl.toml`, and make sure they are not visible in recordings or screenshots. Use the Region containing the Terraform-managed infrastructure you will scan; press Enter for the default output format or enter `json`.
+Complete the prompts as follows:
+
+| AWS CLI prompt | What to enter |
+| --- | --- |
+| `AWS Access Key ID [None]:` | The access key ID you just created for the dedicated read-only IAM user. |
+| `AWS Secret Access Key [None]:` | The matching secret access key. The terminal does not echo it while you type. |
+| `Default region name [None]:` | The AWS Region containing the Terraform-managed infrastructure you will scan. |
+| `Default output format [None]:` | `json`, or press Enter for the AWS CLI default. |
+
+Enter credentials for the **dedicated read-only IAM identity** from this section, not your administrator identity. Treat the access key and secret access key as private credentials: never share them, do not put them in Git, chat messages, or `driftctl.toml`, and make sure they are not visible in recordings or screenshots.
 
 </details>
 

@@ -1,0 +1,522 @@
+# DriftCTL Linux Quick Walkthrough
+
+This is a copy-ready Linux walkthrough for a first DriftCTL live scan. It uses:
+
+- a dedicated AWS CLI profile named `driftctl-readonly` for DriftCTL;
+- a separate administrative AWS CLI profile named `driftctl-terraform-admin` only to create and later remove a small disposable Terraform example; and
+- Ubuntu or Debian commands. For another Linux distribution, install equivalent packages first.
+
+The walkthrough creates an isolated VPC and a closed, unattached security group. It creates no compute, NAT gateway, load balancer, or public IP address. The scan itself is read-only. Still, every Terraform command changes AWS, so use a non-production AWS account and remove the sample as soon as the demonstration is complete.
+
+> [!WARNING]
+> Never use the administrative Terraform profile as DriftCTL's scanning profile. Do not place access keys or secret keys in this document, Git, `driftctl.toml`, recordings, screenshots, or chat messages.
+
+## What You Need
+
+Before starting, have:
+
+1. An AWS account where you are permitted to create IAM policies and users, plus a separate administrative profile permitted to create and delete a VPC and security group.
+2. An AWS Region to use for this demonstration. This guide uses `eu-west-1` (Ireland); choose another supported Region if needed, then use that same Region everywhere below.
+3. An Ubuntu or Debian terminal. Run each code block separately and wait for it to finish before moving to the next one.
+
+> [!IMPORTANT]
+> Names such as `driftctl-readonly` and `driftctl-terraform-admin` are example AWS CLI profile names. Keep them if you want the commands to work exactly as written, or replace every occurrence with your own profile names.
+
+## 1. Install the Required Tools
+
+```bash
+sudo apt update
+```
+
+```bash
+sudo apt install -y git python3 python3-venv curl unzip gpg
+```
+
+```bash
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+```
+
+```bash
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(. /etc/os-release && echo \"$VERSION_CODENAME\") main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+```
+
+```bash
+sudo apt update
+```
+
+```bash
+sudo apt install -y terraform
+```
+
+```bash
+curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
+```
+
+Verify each tool. Python must be version 3.11 or later.
+
+```bash
+git --version
+```
+
+```bash
+python3 --version
+```
+
+```bash
+terraform --version
+```
+
+```bash
+aws --version
+```
+
+## 2. Clone and Install DriftCTL
+
+Run these commands from your Linux home directory. They deliberately create the standard location `~/DriftCTL`, which the later commands use exactly as written.
+
+```bash
+cd ~
+```
+
+```bash
+git clone https://github.com/heyohjayy/DriftCTL.git
+```
+
+```bash
+cd ~/DriftCTL
+```
+
+```bash
+python3 -m venv .venv
+```
+
+```bash
+source .venv/bin/activate
+```
+
+Your prompt should now start with `(.venv)`.
+
+```bash
+python3 -m pip install --upgrade pip
+```
+
+```bash
+python3 -m pip install -e ".[dev]"
+```
+
+```bash
+driftctl --help
+```
+
+> [!NOTE]
+> Do not run `driftctl scan` yet. It needs either a configured Terraform project or explicit fixture files. This walkthrough creates and configures the disposable Terraform project next.
+
+## 3. Create the Dedicated Read-Only AWS Identity
+
+In the AWS Console, open **IAM**. Create a customer-managed policy named `DriftCTLReadOnly`, select the JSON editor, and paste the policy shown below. Save it. Then open **Users**, create or choose an IAM user named `driftctl-readonly`, and attach the `DriftCTLReadOnly` policy to that user.
+
+<details>
+<summary><strong>Copy the disposable example read-only IAM policy</strong></summary>
+
+This is the same file as [`examples/live-usage/driftctl-read-only-policy.json`](../examples/live-usage/driftctl-read-only-policy.json). It contains read-only AWS inventory permissions only.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DescribeEc2Inventory",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeNatGateways",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeNetworkAcls"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeApplicationLoadBalancing",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeRules",
+        "elasticloadbalancing:DescribeTags",
+        "elasticloadbalancing:DescribeTargetGroups"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeRdsInventory",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances",
+        "rds:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeEcsInventory",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeCapacityProviders",
+        "ecs:DescribeClusters",
+        "ecs:DescribeServices",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:ListTagsForResource",
+        "ecs:ListTaskDefinitions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeCloudWatchLogsInventory",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadLambdaInventory",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionConcurrency",
+        "lambda:ListFunctions",
+        "lambda:ListTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadEventBridgeInventory",
+      "Effect": "Allow",
+      "Action": [
+        "events:ListRules",
+        "events:ListTagsForResource",
+        "events:ListTargetsByRule"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadEksInventory",
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeCluster",
+        "eks:DescribeNodegroup",
+        "eks:ListClusters",
+        "eks:ListNodegroups"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadIamIdentityInventory",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetInstanceProfile",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfiles",
+        "iam:ListInstanceProfileTags",
+        "iam:ListRolePolicies",
+        "iam:ListRoles",
+        "iam:ListRoleTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadRoute53Inventory",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ListHostedZones",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ListS3Buckets",
+      "Effect": "Allow",
+      "Action": "s3:ListAllMyBuckets",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadS3BucketControls",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketTagging"
+      ],
+      "Resource": "arn:aws:s3:::*"
+    }
+  ]
+}
+```
+
+</details>
+
+> [!WARNING]
+> AWS displays a secret access key only once. Store it only through your approved credential process. Do not reveal it on screen or include it in a recording.
+
+## 4. Configure AWS CLI Profiles
+
+First create an access key for the dedicated **read-only** IAM user: **AWS Console** > **IAM** > **Users** > `driftctl-readonly` > **Security credentials** > **Access keys** > **Create access key**. Select **Command Line Interface (CLI)**, continue, then copy the access key ID and secret access key when AWS displays them.
+
+Now configure the read-only AWS CLI profile:
+
+```bash
+aws configure --profile driftctl-readonly
+```
+
+Complete the prompts exactly as follows:
+
+| AWS CLI prompt | What to enter |
+| --- | --- |
+| `AWS Access Key ID [None]:` | The access key ID you just created for `driftctl-readonly`. |
+| `AWS Secret Access Key [None]:` | The matching secret access key. The terminal does not echo it while you type. |
+| `Default region name [None]:` | `eu-west-1` |
+| `Default output format [None]:` | `json` |
+
+Confirm that it works. The command should return the account and ARN for the dedicated read-only identity.
+
+```bash
+aws sts get-caller-identity --profile driftctl-readonly
+```
+
+Next, configure a separate administrative profile that is allowed to create and delete the disposable Terraform sample. Use an approved **non-root** IAM user or role; never create access keys for the AWS account root user. If you need an access key for an approved IAM user, obtain it through **AWS Console** > **IAM** > **Users** > select that approved administrative user > **Security credentials** > **Access keys** > **Create access key**, then select **Command Line Interface (CLI)**.
+
+Do not use the read-only access key here.
+
+```bash
+aws configure --profile driftctl-terraform-admin
+```
+
+Complete the prompts as follows:
+
+| AWS CLI prompt | What to enter |
+| --- | --- |
+| `AWS Access Key ID [None]:` | The access key ID for your approved non-root administrative IAM user. |
+| `AWS Secret Access Key [None]:` | The matching secret access key. The terminal does not echo it while you type. |
+| `Default region name [None]:` | `eu-west-1` |
+| `Default output format [None]:` | `json` |
+
+Confirm the administrative profile separately.
+
+```bash
+aws sts get-caller-identity --profile driftctl-terraform-admin
+```
+
+## 5. Create the Disposable Terraform Example
+
+Create the example project outside the DriftCTL repository.
+
+The `-p` flag means "create parent directories if necessary, and do not report an error if the directory already exists."
+
+```bash
+mkdir -p ~/driftctl-live-example
+```
+
+```bash
+cd ~/driftctl-live-example
+```
+
+<details>
+<summary><strong>Copy the disposable Terraform file</strong></summary>
+
+This is the same file as [`examples/live-usage/driftctl-example-security-group.tf`](../examples/live-usage/driftctl-example-security-group.tf). Create a file named `main.tf` in `~/driftctl-live-example`, paste the content below, then save it. Its generic `us-east-1` default is overridden by the explicit `eu-west-1` Terraform plan command in the next step.
+
+```hcl
+terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
+  }
+}
+
+variable "aws_region" {
+  description = "AWS Region in which to create this disposable DriftCTL example."
+  type        = string
+  default     = "us-east-1"
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# This isolated VPC and unattached security group have no hourly AWS charge.
+# Keep the security group closed: it has no ingress or egress rules.
+resource "aws_vpc" "driftctl_example" {
+  cidr_block           = "10.254.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name    = "driftctl-example-vpc"
+    Project = "DriftCTLExample"
+    Purpose = "read-only-drift-scan-demo"
+  }
+}
+
+resource "aws_security_group" "driftctl_example" {
+  name                   = "driftctl-example-closed-sg"
+  description            = "Closed, unattached security group for a DriftCTL example"
+  vpc_id                 = aws_vpc.driftctl_example.id
+  revoke_rules_on_delete = true
+  ingress                = []
+  egress                 = []
+
+  tags = {
+    Name    = "driftctl-example-closed-sg"
+    Project = "DriftCTLExample"
+    Purpose = "read-only-drift-scan-demo"
+  }
+}
+
+output "driftctl_example_vpc_id" {
+  value = aws_vpc.driftctl_example.id
+}
+
+output "driftctl_example_security_group_id" {
+  value = aws_security_group.driftctl_example.id
+}
+```
+
+</details>
+
+For a direct copy from the cloned repository instead, use this command. It creates the same `main.tf` file:
+
+```bash
+cp ~/DriftCTL/examples/live-usage/driftctl-example-security-group.tf ./main.tf
+```
+
+Set the administrative profile for Terraform. This affects this terminal only.
+
+```bash
+export AWS_PROFILE="driftctl-terraform-admin"
+```
+
+```bash
+terraform init
+```
+
+```bash
+terraform plan -var="aws_region=eu-west-1" -out=driftctl-live-example.tfplan
+```
+
+Review the plan. It should add only one VPC and one closed security group.
+
+```bash
+terraform show -no-color driftctl-live-example.tfplan
+```
+
+Apply the reviewed plan.
+
+```bash
+terraform apply driftctl-live-example.tfplan
+```
+
+> [!IMPORTANT]
+> `eu-west-1` is the Region used by this walkthrough. If you choose another Region, replace every `eu-west-1` in this walkthrough with your chosen Region before creating the sample.
+
+## 6. Configure DriftCTL for the Example
+
+Copy the configuration template into the disposable Terraform directory.
+
+```bash
+cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+```
+
+Open it in a terminal editor.
+
+```bash
+vi driftctl.toml
+```
+
+In `vi`, press `i` to enter insert mode, replace the complete contents with the following, then press `Esc`, type `:wq`, and press Enter to save and exit.
+
+```toml
+[scan]
+terraform_dir = "."
+aws_profile = "driftctl-readonly"
+region = "eu-west-1"
+tags = ["Project=DriftCTLExample"]
+report = "driftctl-output/live-report.md"
+audit = "driftctl-output/events.jsonl"
+```
+
+The virtual environment is the local `.venv` Python environment created in step 2. It was activated in the earlier terminal. If you opened a new terminal, activate it again before the scan:
+
+```bash
+cd ~/DriftCTL
+```
+
+```bash
+source .venv/bin/activate
+```
+
+```bash
+cd ~/driftctl-live-example
+```
+
+## 7. Run the Read-Only Scan
+
+Clear the administrative Terraform profile so the terminal has no administrative default, then run the normal DriftCTL product command. DriftCTL reads `aws_profile = "driftctl-readonly"` from `driftctl.toml` and uses that separate read-only identity.
+
+```bash
+unset AWS_PROFILE
+```
+
+```bash
+driftctl scan
+```
+
+The baseline should show `0` findings and `No drift detected`. DriftCTL writes these two local evidence files:
+
+- `~/driftctl-live-example/driftctl-output/live-report.md`
+- `~/driftctl-live-example/driftctl-output/events.jsonl`
+
+## 8. Destroy the Disposable Example
+
+Do this promptly after recording the clean scan. The AWS CLI profile below is the administrative Terraform profile, not the read-only profile.
+
+```bash
+export AWS_PROFILE="driftctl-terraform-admin"
+```
+
+```bash
+terraform plan -destroy -var="aws_region=eu-west-1" -out=driftctl-live-example-destroy.tfplan
+```
+
+Review the plan. It should destroy only the VPC and security group created by this walkthrough.
+
+```bash
+terraform show -no-color driftctl-live-example-destroy.tfplan
+```
+
+```bash
+terraform apply driftctl-live-example-destroy.tfplan
+```
+
+Confirm the local Terraform state no longer contains the disposable resources.
+
+```bash
+terraform state list
+```
+
+The command should return no resources. The DriftCTL tool remains installed in `~/DriftCTL`; you can reuse it later with a different Terraform project and a read-only profile.
+
+## Next Steps
+
+For a cross-platform guide to scanning your own Terraform-managed AWS environment, including how to interpret findings and run future scans, read the [full Usage Guide](USAGE.md).

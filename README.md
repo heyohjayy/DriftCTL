@@ -197,9 +197,13 @@ aws sso login --profile driftctl-readonly
 
 Use this in a personal or learning account only when programmatic IAM-user credentials are permitted. Run the following and enter only credentials for the read-only identity. Treat the access key and secret key as private credentials: never share them, and make sure they are not visible in recordings or screenshots.
 
+Before running it, obtain those values from **AWS Console** > **IAM** > **Users** > select the dedicated read-only user > **Security credentials** > **Access keys** > **Create access key**. Select **Command Line Interface (CLI)**, then copy the access key ID and secret access key when AWS displays them. The secret key is shown only once.
+
 ```powershell
 aws configure --profile driftctl-readonly
 ```
+
+At the prompts, enter the new read-only user's access key ID and secret access key, choose the AWS Region containing the infrastructure you will scan, and enter `json` for output. The [Usage Guide](docs/USAGE.md#5-prepare-aws-read-only-access) explains each prompt in detail.
 
 </details>
 
