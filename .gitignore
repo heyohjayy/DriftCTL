@@ -4,6 +4,10 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.eggs/
+*.egg-info/
+build/
+dist/
 .coverage
 htmlcov/
 
@@ -25,6 +29,7 @@ crash.*.log
 *.key
 
 # Runtime findings can contain account-specific infrastructure metadata.
+driftctl-output/
 audit/*.jsonl
 reports/*.md
 !reports/.gitkeep

@@ -24,7 +24,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -43,5 +43,13 @@ jobs:
       - name: Check dependency consistency
         run: python -m pip check
 
+      - name: Build distributable packages
+        run: python -m build
+
       - name: Check whitespace errors
-        run: git diff --check HEAD^ HEAD
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+          else
+            git diff --check "${{ github.event.before }}" "${{ github.sha }}"
+          fi

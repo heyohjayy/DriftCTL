@@ -4,10 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "infra-drift-control"
-version = "0.1.0"
+version = "1.0.0"
 description = "A local, policy-driven Terraform-to-AWS drift detection engine."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
 dependencies = [
   "boto3>=1.34,<2",
   "rich>=13,<14",
@@ -15,7 +23,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9"]
+dev = ["build>=1,<2", "pytest>=8,<9"]
+
+[project.urls]
+Homepage = "https://github.com/heyohjayy/DriftCTL"
+Repository = "https://github.com/heyohjayy/DriftCTL"
+Issues = "https://github.com/heyohjayy/DriftCTL/issues"
 
 [project.scripts]
 driftctl = "driftctl.cli:app"
