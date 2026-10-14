@@ -195,7 +195,7 @@ aws sso login --profile driftctl-readonly
 <details>
 <summary><strong>Option B: Dedicated shared AWS CLI profile</strong></summary>
 
-Use this in a personal or learning account only when programmatic IAM-user credentials are permitted. Run the following and enter only credentials for the read-only identity. Do not record or share the requested access key or secret key:
+Use this in a personal or learning account only when programmatic IAM-user credentials are permitted. Run the following and enter only credentials for the read-only identity. Treat the access key and secret key as private credentials: never share them, and make sure they are not visible in recordings or screenshots.
 
 ```powershell
 aws configure --profile driftctl-readonly
@@ -241,21 +241,21 @@ terraform show -json > /dev/null
 <details>
 <summary><strong>How to create and edit <code>driftctl.toml</code></strong></summary>
 
-Run one of the following commands from the root of **your Terraform project**. Replace the DriftCTL path with the location where you cloned this repository.
+Run one of the following commands from the root of **your Terraform project**. The commands assume you cloned DriftCTL into the default location shown below.
 
 **Windows PowerShell**
 
 ```powershell
-Copy-Item "C:\path\to\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
+Copy-Item "$HOME\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
 ```
 
 **macOS or Linux (Bash/Zsh)**
 
 ```bash
-cp /path/to/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
 ```
 
-`C:\path\to\DriftCTL` and `/path/to/DriftCTL` are placeholders. Replace either with your own cloned repository path.
+These commands work as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. If you cloned the repository somewhere else, replace only `$HOME\DriftCTL` or `~/DriftCTL` with its actual location.
 
 Open the new file in VS Code, or edit it with any plain-text editor:
 

@@ -305,7 +305,7 @@ Use this only when your account uses programmatic IAM-user credentials and your 
 aws configure --profile driftctl-readonly
 ```
 
-The AWS CLI asks for an access key ID, secret access key, default Region, and output format. Enter credentials for the **dedicated read-only IAM identity** from this section, not your administrator identity. Keep the access key and secret out of recordings, screenshots, Git, chat messages, and `driftctl.toml`. Use the Region containing the Terraform-managed infrastructure you will scan; press Enter for the default output format or enter `json`.
+The AWS CLI asks for an access key ID, secret access key, default Region, and output format. Enter credentials for the **dedicated read-only IAM identity** from this section, not your administrator identity. Treat the access key and secret access key as private credentials: never share them, do not put them in Git, chat messages, or `driftctl.toml`, and make sure they are not visible in recordings or screenshots. Use the Region containing the Terraform-managed infrastructure you will scan; press Enter for the default output format or enter `json`.
 
 </details>
 
@@ -373,14 +373,14 @@ New-Item -ItemType Directory -Path "$HOME\driftctl-live-example"
 ```
 
 ```powershell
-Copy-Item "C:\path\to\DriftCTL\examples\live-usage\driftctl-example-security-group.tf" "$HOME\driftctl-live-example\main.tf"
+Copy-Item "$HOME\DriftCTL\examples\live-usage\driftctl-example-security-group.tf" "$HOME\driftctl-live-example\main.tf"
 ```
 
 ```powershell
 cd "$HOME\driftctl-live-example"
 ```
 
-> **Important:** `C:\path\to\DriftCTL` is a **placeholder**. Replace it with the full path to the DriftCTL folder you cloned in section 4.
+> **Important:** This command works as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `$HOME\DriftCTL` only if you cloned the repository somewhere else.
 
 **macOS or Linux (Bash/Zsh)**
 
@@ -389,14 +389,14 @@ mkdir -p ~/driftctl-live-example
 ```
 
 ```bash
-cp /path/to/DriftCTL/examples/live-usage/driftctl-example-security-group.tf ~/driftctl-live-example/main.tf
+cp ~/DriftCTL/examples/live-usage/driftctl-example-security-group.tf ~/driftctl-live-example/main.tf
 ```
 
 ```bash
 cd ~/driftctl-live-example
 ```
 
-> **Important:** `/path/to/DriftCTL` is a **placeholder**. Replace it with the full path to the DriftCTL folder you cloned in section 4.
+> **Important:** This command works as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `~/DriftCTL` only if you cloned the repository somewhere else.
 
 Set your approved administrative Terraform profile, then create the sample.
 
@@ -437,16 +437,16 @@ Copy the configuration template into the example directory.
 **Windows PowerShell**
 
 ```powershell
-Copy-Item "C:\path\to\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
+Copy-Item "$HOME\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
 ```
 
 **macOS or Linux (Bash/Zsh)**
 
 ```bash
-cp /path/to/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
 ```
 
-> **Important:** `C:\path\to\DriftCTL` and `/path/to/DriftCTL` are **placeholders**. Replace either path with your own cloned DriftCTL directory.
+> **Important:** These commands work as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `$HOME\DriftCTL` or `~/DriftCTL` only if you cloned the repository somewhere else.
 
 Open `driftctl.toml` in VS Code or another plain-text editor, then replace the example values:
 
@@ -538,16 +538,16 @@ Copy the configuration template into the root of **your Terraform project**. Do 
 **Windows PowerShell**
 
 ```powershell
-Copy-Item "C:\path\to\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
+Copy-Item "$HOME\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
 ```
 
 **macOS or Linux (Bash/Zsh)**
 
 ```bash
-cp /path/to/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
 ```
 
-> **Important:** `C:\path\to\DriftCTL` and `/path/to/DriftCTL` are **placeholders**. Replace them with the full local path to your cloned DriftCTL repository.
+> **Important:** These commands work as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `$HOME\DriftCTL` or `~/DriftCTL` only if you cloned the repository somewhere else.
 
 Open `driftctl.toml` in VS Code or another plain-text editor, then replace the example values:
 
