@@ -10,6 +10,7 @@
   <a href="https://www.terraform.io/"><img src="https://img.shields.io/badge/Terraform-State-7B42BC?logo=terraform&logoColor=white" alt="Terraform state"></a>
   <a href="https://aws.amazon.com/"><img src="https://img.shields.io/badge/AWS-Read--only%20collection-232F3E?logo=amazonaws&logoColor=white" alt="Read-only AWS collection"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-D22128" alt="GNU Affero General Public License v3.0"></a>
+  <a href="NOTICE"><img src="https://img.shields.io/badge/Copyright-2026%20heyohjayy-5E2CA5" alt="DriftCTL copyright notice"></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributions-Welcome-2EA44F" alt="Contributions welcome"></a>
 </p>
 
@@ -256,4 +257,5 @@ No Terraform infrastructure yet? Use the no-cost, disposable [live-usage sample]
 - [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The usage guide explains how to apply it safely.
 - [Changelog](CHANGELOG.md): release history and the current release's known boundaries.
 - [License](LICENSE): GNU Affero General Public License v3.0 permissions, conditions, and limitations. Modified versions offered to users over a network must provide their corresponding source code under the same license.
+- [Copyright notice](NOTICE): ownership, license reference, redistribution, third-party-material, and warranty notices for DriftCTL.
 - [Evidence index](docs/screenshots/README.md): screenshots from the offline and controlled live-validation demonstrations.

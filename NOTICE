@@ -1,1 +1,38 @@
-Copyright 2026 heyohjayy
+DriftCTL Copyright Notice
+==========================
+
+Copyright (C) 2026 heyohjayy.
+
+This notice applies to the original DriftCTL source code, documentation,
+original visual assets, and other original material in this repository unless
+a file carries a separate copyright or license notice.
+
+License
+-------
+
+DriftCTL is licensed under the GNU Affero General Public License, version 3
+or any later version (AGPL-3.0-or-later). The complete and controlling license
+text is provided in the LICENSE file at the repository root.
+
+Redistribution and Modification
+-------------------------------
+
+When redistributing DriftCTL or a modified version, retain applicable
+copyright, license, and warranty notices. Mark material changes so they are
+not represented as the original DriftCTL release. A modified version offered
+for use over a network must provide its corresponding source as required by
+the AGPL-3.0-or-later.
+
+Third-Party Material
+--------------------
+
+Third-party dependencies, service APIs, trademarks, and materials retain
+their respective owners' rights and are subject to their own terms. This
+notice does not claim ownership of those materials.
+
+No Warranty
+-----------
+
+DriftCTL is distributed without warranty, to the extent permitted by the
+AGPL-3.0-or-later. Refer to LICENSE for the full warranty disclaimer and the
+terms governing copying, distribution, modification, and network use.
