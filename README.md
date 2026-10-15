@@ -300,11 +300,12 @@ driftctl scan
 
 DriftCTL writes a report and hash-chained audit evidence, then exits `0` when clean, `2` when it finds drift, or `1` when the scan cannot complete. A finding is evidence for a human decision, never automatic remediation.
 
-No Terraform infrastructure yet? Use the no-cost, disposable [live-usage sample](examples/live-usage/) or the credential-free [offline fixtures](examples/) described in the full [Usage Guide](docs/USAGE.md).
+No Terraform infrastructure yet? Use the no-cost, disposable [live-usage sample](examples/live-usage/) or the credential-free [offline fixtures](examples/) described in the full [Usage Guide](docs/USAGE.md). For a direct Ubuntu/Debian walkthrough that uses the disposable example, see the [Linux quick walkthrough](docs/LINUX_USAGE.md).
 
 ## Learn More
 
 - [Usage guide](docs/USAGE.md): the complete first-time-user workflow for scanning your own Terraform-managed AWS environment.
+- [Linux quick walkthrough](docs/LINUX_USAGE.md): one copy-ready Ubuntu/Debian path using separate Terraform-admin and read-only scanning profiles with the disposable example.
 - [Controlled validation lab](docs/VALIDATION.md): the project's own non-production test infrastructure, deliberate drift scenarios, evidence screenshots, remediation, and cleanup record.
 - [Terraform infrastructure](infra/terraform/README.md): the version-controlled non-production infrastructure reference used for this project's controlled live validation.
 - [Read-only IAM policy](infra/iam/driftctl-read-only-policy.json): the least-privilege AWS inspection policy used by the live-scan workflow. The usage guide explains how to apply it safely.
