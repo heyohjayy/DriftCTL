@@ -49,9 +49,11 @@ The optional controlled-validation procedures in [the validation guide](docs/VAL
 > [!NOTE]
 > Current coverage boundaries: DriftCTL supports Application Load Balancers, but not Network or Gateway Load Balancers. It does not evaluate target registration or runtime target health. RDS coverage is limited to DB instances, not Aurora clusters. When the tool cannot determine a reliable impact for a difference, it reports `NOT ASSESSED` instead of overstating risk.
 
-## Quick Start
+## Quick Walkthrough Video
 
-[![Quick DriftCTL walkthrough](https://img.shields.io/badge/Quick%20Walkthrough-CLI%20%7C%20Web%20GUI%20%7C%20AI%20Agents-2563EB?style=for-the-badge)](https://drive.google.com/file/d/1bxpyVSQ1-5rGvXKs6S5Fe4Eo3kD3c4rV/view?usp=sharing)
+[![Watch the DriftCTL quick walkthrough video](https://drive.google.com/thumbnail?id=1bxpyVSQ1-5rGvXKs6S5Fe4Eo3kD3c4rV&sz=w1200)](https://drive.google.com/file/d/1bxpyVSQ1-5rGvXKs6S5Fe4Eo3kD3c4rV/view?usp=sharing)
+
+## Quick Start
 
 DriftCTL is designed to inspect **your existing Terraform-managed AWS environment**. You clone the repository, install the command locally, configure a dedicated read-only AWS identity, and run the scan from your own Terraform project's applied state. Install Git, Python 3.11+, Terraform, and AWS CLI first; the detailed, first-time-user guide is [`docs/USAGE.md`](docs/USAGE.md).
 
