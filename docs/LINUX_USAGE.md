@@ -268,6 +268,18 @@ This is the same file as [`examples/live-usage/driftctl-read-only-policy.json`](
 
 ## 4. Configure AWS CLI Profiles
 
+You must configure and verify **both** profiles in this section before moving to Terraform:
+
+| Profile | Purpose | Used by |
+| --- | --- | --- |
+| `driftctl-readonly` | Inspects live AWS resources without changing them. | `driftctl scan` |
+| `driftctl-terraform-admin` | Creates and destroys only the disposable VPC and security-group example. | Terraform commands in steps 5 and 8 |
+
+> [!IMPORTANT]
+> Configuring `driftctl-readonly` does **not** create `driftctl-terraform-admin`. They need different credentials and are configured separately. Do not continue to `terraform plan` until both `aws sts get-caller-identity` checks below return successfully.
+
+### Configure the read-only scanning profile
+
 First create an access key for the dedicated **read-only** IAM user: **AWS Console** > **IAM** > **Users** > `driftctl-readonly` > **Security credentials** > **Access keys** > **Create access key**. Select **Command Line Interface (CLI)**, continue, then copy the access key ID and secret access key when AWS displays them.
 
 Now configure the read-only AWS CLI profile:
@@ -291,7 +303,11 @@ Confirm that it works. The command should return the account and ARN for the ded
 aws sts get-caller-identity --profile driftctl-readonly
 ```
 
-Next, configure a separate administrative profile that is allowed to create and delete the disposable Terraform sample. Use an approved **non-root** IAM user or role; never create access keys for the AWS account root user. If you need an access key for an approved IAM user, obtain it through **AWS Console** > **IAM** > **Users** > select that approved administrative user > **Security credentials** > **Access keys** > **Create access key**, then select **Command Line Interface (CLI)**.
+The returned ARN should identify the dedicated read-only IAM user, such as `:user/driftctl-readonly`.
+
+### Configure the Terraform administration profile
+
+This second profile is required before Terraform can create or destroy the disposable sample. Use an approved **non-root** IAM user or role; never create access keys for the AWS account root user. If you need an access key for an approved IAM user, obtain it through **AWS Console** > **IAM** > **Users** > select that approved administrative user > **Security credentials** > **Access keys** > **Create access key**, then select **Command Line Interface (CLI)**.
 
 Do not use the read-only access key here.
 
@@ -313,6 +329,10 @@ Confirm the administrative profile separately.
 ```bash
 aws sts get-caller-identity --profile driftctl-terraform-admin
 ```
+
+The returned ARN must identify your separate administrative IAM user or role. It must **not** end with `:user/driftctl-readonly`.
+
+Do not continue until both identity commands have returned successfully. If the second command says the profile does not exist, rerun `aws configure --profile driftctl-terraform-admin` and complete its four prompts with the approved administrative user's credentials.
 
 ## 5. Create the Disposable Terraform Example
 
@@ -426,6 +446,9 @@ Apply the reviewed plan.
 ```bash
 terraform apply driftctl-live-example.tfplan
 ```
+
+> [!NOTE]
+> If an apply fails and Terraform later reports `Saved plan is stale`, do not retry the old plan file. Run `terraform plan` again, review the new plan with `terraform show`, then apply the newly saved plan. A failed operation can update local Terraform state metadata even when AWS created no resource.
 
 > [!IMPORTANT]
 > `eu-west-1` is the Region used by this walkthrough. If you choose another Region, replace every `eu-west-1` in this walkthrough with your chosen Region before creating the sample.
