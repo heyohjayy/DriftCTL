@@ -371,12 +371,17 @@ Use this only if you do not have Terraform infrastructure available, or cannot s
 
 The Terraform sample creates an isolated VPC and a closed, unattached security group. It creates no compute, NAT gateway, load balancer, public IP address, or other hourly-billed resource. It is still an AWS change, so use a non-production account and destroy it when finished.
 
-You need two AWS identities:
+You need two **different credential pairs** for this option:
 
-- An **administrative Terraform identity** that can create and later remove the example VPC and security group.
-- The separate read-only scanning identity prepared in [section 5](#5-prepare-aws-read-only-access).
+| Local AWS CLI profile | Identity and purpose |
+| --- | --- |
+| `your-terraform-admin-profile` | An approved administrative IAM user or role that Terraform can use to create and later remove the example VPC and security group. This is a placeholder profile name. |
+| `driftctl-readonly` | The separate read-only scanning identity prepared in [section 5](#5-prepare-aws-read-only-access). Replace this placeholder with your own scanning-profile name where applicable. |
 
-> **Warning:** Do not run the Terraform commands below with the read-only scanning identity. Review the plan before applying it and destroy the sample immediately after testing.
+> [!WARNING]
+> Do not run the Terraform commands below with the read-only scanning identity. The two profiles must resolve to different AWS identities. Review the plan before applying it and destroy the sample immediately after testing.
+
+For a complete Ubuntu/Debian example that creates, configures, and verifies both local profiles before this step, see the [Linux quick walkthrough](LINUX_USAGE.md#4-configure-aws-cli-profiles).
 
 Create a folder outside the DriftCTL repository and copy the sample into it.
 
@@ -428,6 +433,19 @@ export AWS_PROFILE="your-terraform-admin-profile"
 
 > **Important:** `your-terraform-admin-profile` is a **placeholder**. Replace it with the name of your own approved administrative AWS profile. Do not use `driftctl-readonly` here.
 
+Before continuing, confirm that the selected profile resolves to the approved administrative identity, not the read-only scanning identity:
+
+```powershell
+aws sts get-caller-identity --profile "your-terraform-admin-profile"
+```
+
+```bash
+aws sts get-caller-identity --profile "your-terraform-admin-profile"
+```
+
+> [!IMPORTANT]
+> Replace `your-terraform-admin-profile` in these commands with your real administrative profile name. The returned ARN must identify the administrative IAM user or role. If it identifies your read-only scanning user, stop and configure this profile again with the administrative identity's credentials before running Terraform.
+
 ```powershell
 terraform init
 ```
@@ -443,6 +461,9 @@ terraform show -no-color driftctl-live-example.tfplan
 ```powershell
 terraform apply driftctl-live-example.tfplan
 ```
+
+> [!NOTE]
+> If Terraform reports `Saved plan is stale`, do not reuse that plan file. Generate a new plan with the same `terraform plan` command, review it with `terraform show`, then apply only the newly generated plan. A previous failed operation can update local Terraform state metadata even when it created no AWS resources.
 
 > **Important:** `us-east-1` is a **placeholder**. Replace it with the AWS Region where you want to create the disposable example, and use the same Region in its scan configuration below.
 
@@ -487,6 +508,20 @@ audit = "driftctl-output/events.jsonl"
 ```
 
 > **Important:** `driftctl-readonly` and `us-east-1` are **placeholders**. Replace them with your own read-only profile name and the Region you chose for the disposable example. Keep `Project=DriftCTLExample` unchanged for this sample.
+
+Clear the administrative profile variable before scanning so DriftCTL uses the read-only profile configured in `driftctl.toml`.
+
+**Windows PowerShell**
+
+```powershell
+Remove-Item Env:AWS_PROFILE
+```
+
+**macOS or Linux (Bash/Zsh)**
+
+```bash
+unset AWS_PROFILE
+```
 
 With the DriftCTL Python environment still active, remain in the example directory and run the branded command:
 
@@ -710,6 +745,7 @@ This does not change the report, audit evidence, or read-only behavior. It is us
 | `driftctl` is not recognized | Activate the virtual environment, then run `python -m pip install -e ".[dev]"` from the DriftCTL repository. |
 | Windows blocks `driftctl.exe` | Follow the scoped note in [Install the tool](#43-install-the-tool) and run `scripts/Enable-WindowsDevCli.ps1` from the repository root. |
 | AWS credentials cannot be found | Verify the profile with `aws sts get-caller-identity --profile <your-profile>`, replacing `<your-profile>` with your actual read-only profile name. Make it match `driftctl.toml`. |
+| `Saved plan is stale` | Do not apply the old plan file. Run `terraform plan` again, review the new plan with `terraform show`, then apply only the new plan. A previous failed operation can update local state metadata even when it created no AWS resources. |
 | Terraform state cannot be read | Work from the Terraform root that owns the applied state and confirm `terraform show -json` succeeds there. |
 | A resource is absent from a scoped scan | Ensure it has every tag in `tags`, both in Terraform state and in AWS. |
 | Counts differ but there are no findings | Read collection diagnostics. Unsupported resources and deliberately excluded AWS-managed resources can affect counts without being drift. |

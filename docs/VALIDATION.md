@@ -4,6 +4,8 @@ This guide records the non-production environments, deliberate drift scenarios, 
 
 For first-time installation and real-world usage against your own Terraform-managed AWS environment, start with [`docs/USAGE.md`](USAGE.md). That guide covers cloning, platform-specific installation, read-only AWS access, Terraform state, configuration, reports, audit evidence, and normal repeatable scans.
 
+For an Ubuntu or Debian first-run walkthrough that uses the disposable live example and explicitly separates the Terraform-admin and read-only scanning profiles, see [`docs/LINUX_USAGE.md`](LINUX_USAGE.md).
+
 DriftCTL remains read-only throughout every lab: it reads Terraform state and AWS configuration, compares them, writes a report, and suggests what to check next. It does not run `terraform apply`, edit Terraform state, or make changes in AWS. The deliberate changes described below are manually made with a separate approved administrative identity for validation purposes.
 
 > [!WARNING]
@@ -110,7 +112,7 @@ You can complete the safe local example even if Terraform or the AWS CLI is not 
 
 ### Connect the terminal to AWS
 
-Before a live lab, configure your approved AWS profile in the same terminal (including the VS Code integrated terminal) that will run the commands. Choose the appropriate SSO, dedicated shared-profile, or existing-profile path in [the Usage Guide](USAGE.md#5-prepare-aws-read-only-access). Do not run `aws configure sso` unless your organization provides IAM Identity Center access, including an access portal URL and SSO Region.
+Before a live lab, configure your approved AWS profile in the same terminal (including the VS Code integrated terminal) that will run the commands. Choose the appropriate SSO, dedicated shared-profile, or existing-profile path in [the Usage Guide](USAGE.md#5-prepare-aws-read-only-access). Do not run `aws configure sso` unless your organization provides IAM Identity Center access, including an access portal URL and SSO Region. Terraform changes for a live lab must use a separate approved administrative identity; see the [Linux quick walkthrough](LINUX_USAGE.md#4-configure-aws-cli-profiles) for a concrete two-profile example.
 
 ```powershell
 aws sts get-caller-identity --profile driftctl-readonly
@@ -878,6 +880,7 @@ Run `driftctl scan` after the EKS update completes. The final scan should report
 | --- | --- |
 | `driftctl` is not recognized | Activate the virtual environment with `.\.venv\Scripts\Activate.ps1`. Then run `python -m pip install -e ".[dev]"` from the DriftCTL repository. |
 | AWS credentials cannot be found | Check that the AWS CLI profile exists with `aws sts get-caller-identity --profile driftctl-readonly`. Use the same profile name in the command or in `driftctl.toml`. |
+| `Saved plan is stale` | Do not apply the old plan file. Generate a new plan, review it, then apply only the new plan. A prior operation can update local Terraform state metadata even when it made no AWS change. |
 | Terraform state cannot be read | Point DriftCTL at the Terraform working directory that owns the applied state. In that directory, run `terraform show -json` to make sure Terraform can read the state. Do not commit this output because it can contain details about your infrastructure. |
 | `driftctl scan` says it needs a Terraform directory, region, report, or audit path | Make sure `driftctl.toml` is in the current Terraform project folder and includes all required `[scan]` values. You can also use the full command and provide the missing option directly. |
 | A resource is missing from a scoped scan | Check that the resource has every tag listed in your `--tag` options or in the `tags` setting of `driftctl.toml`. Then run `terraform plan` and `terraform apply` if Terraform still needs to add the tag. |
