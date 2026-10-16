@@ -326,8 +326,10 @@ mkdir -p ~/driftctl-live-example
 cd ~/driftctl-live-example
 ```
 
+Choose **one** of the following ways to create `main.tf`. Do not do both. Option B is the recommended copy-ready path for this walkthrough.
+
 <details>
-<summary><strong>Copy the disposable Terraform file</strong></summary>
+<summary><strong>Option A: Copy the Terraform file manually</strong></summary>
 
 This is the same file as [`examples/live-usage/driftctl-example-security-group.tf`](../examples/live-usage/driftctl-example-security-group.tf). Create a file named `main.tf` in `~/driftctl-live-example`, paste the content below, then save it. Its generic `us-east-1` default is overridden by the explicit `eu-west-1` Terraform plan command in the next step.
 
@@ -393,7 +395,9 @@ output "driftctl_example_security_group_id" {
 
 </details>
 
-Download the versioned Terraform example into the current folder:
+**Option B: Download the versioned Terraform example (recommended)**
+
+This command downloads the exact same `main.tf` file shown in Option A from the matching DriftCTL release. Use it instead of manually copying the code above.
 
 ```bash
 curl -fsSLo ./main.tf https://raw.githubusercontent.com/heyohjayy/DriftCTL/v1.0.1/examples/live-usage/driftctl-example-security-group.tf
@@ -433,7 +437,7 @@ terraform apply driftctl-live-example.tfplan
 
 ## 6. Configure DriftCTL for the Example
 
-Create the non-secret scan configuration in the disposable Terraform directory. This writes `driftctl.toml` automatically; it does not store AWS credentials.
+Create the non-secret scan configuration in the disposable Terraform directory. `driftctl init` writes `driftctl.toml` automatically; it does not store AWS credentials or make AWS changes. In this command, `--profile` selects the dedicated read-only AWS CLI profile, `--region` selects the AWS Region to scan, and `--tag` limits the scan to resources tagged `Project=DriftCTLExample`.
 
 ```bash
 driftctl init --profile driftctl-readonly --region eu-west-1 --tag Project=DriftCTLExample
@@ -441,6 +445,8 @@ driftctl init --profile driftctl-readonly --region eu-west-1 --tag Project=Drift
 
 > [!IMPORTANT]
 > `driftctl-readonly` and `eu-west-1` are example values. Replace them if you chose a different read-only AWS profile or Region. Keep `Project=DriftCTLExample` unchanged for this sample.
+
+The generated file tells future `driftctl scan` commands to read Terraform state from this directory, use the read-only profile and Region above, and write the Markdown report plus hash-chained audit log under `driftctl-output/`. You do not need to edit the file for this walkthrough.
 
 ## 7. Run the Read-Only Scan
 
@@ -489,6 +495,13 @@ terraform state list
 
 The command should return no resources. DriftCTL remains installed through `pipx`; you can reuse it later with a different Terraform project and a read-only profile.
 
-## Next Steps
+## Next Steps: Scan Your Own Environment
 
-For a cross-platform guide to scanning your own Terraform-managed AWS environment, including how to interpret findings and run future scans, read the [full Usage Guide](USAGE.md).
+This walkthrough is a disposable proof that DriftCTL is installed and can compare Terraform state with live AWS. It does **not** scan the infrastructure you actually manage. After the teardown succeeds, use the same installed `driftctl` command with your own Terraform project:
+
+1. Change to the root directory that owns your own applied Terraform state.
+2. Confirm `terraform show -json` succeeds there.
+3. Run `driftctl init`, enter your own dedicated read-only profile, Region, and optional tag scope.
+4. Run `driftctl scan` from that same Terraform directory.
+
+For the cross-platform, step-by-step version of this workflow, including how to interpret findings and run future scans, see [Option C in the full Usage Guide](USAGE.md#6-choose-your-first-scan).

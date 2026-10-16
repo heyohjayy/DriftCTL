@@ -61,7 +61,8 @@ Your Terraform files and state come from **your own Terraform project**, not fro
 
 Install Python 3.11 or later, `pipx`, Terraform, and AWS CLI before installing DriftCTL. Git is optional unless you want a source checkout or repository examples. Use an administrator-approved install method on managed devices.
 
-### Windows
+<details>
+<summary><strong>Windows</strong></summary>
 
 Open **PowerShell** or the integrated PowerShell terminal in VS Code. The following commands use Windows Package Manager (`winget`); run them one at a time. Restart the terminal after installation so its `PATH` updates.
 
@@ -85,7 +86,10 @@ winget install --id Hashicorp.Terraform -e --source winget
 winget install --id Amazon.AWSCLI -e --source winget
 ```
 
-### macOS
+</details>
+
+<details>
+<summary><strong>macOS</strong></summary>
 
 Open Terminal or the integrated terminal in VS Code. With [Homebrew](https://brew.sh/) installed, run these commands one at a time:
 
@@ -105,7 +109,10 @@ brew install hashicorp/tap/terraform
 brew install awscli
 ```
 
-### Linux (Ubuntu or Debian)
+</details>
+
+<details>
+<summary><strong>Linux (Ubuntu or Debian)</strong></summary>
 
 Open a terminal or the integrated terminal in VS Code. These commands install Python tooling and the AWS CLI. Follow HashiCorp's [official Terraform install instructions](https://developer.hashicorp.com/terraform/install) if your distribution differs from Ubuntu or Debian.
 
@@ -132,6 +139,8 @@ sudo apt update && sudo apt install -y terraform
 ```bash
 curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
 ```
+
+</details>
 
 ### Verify the tools
 
@@ -529,11 +538,17 @@ driftctl scan --terraform-dir "/path/to/your/terraform-project" --profile driftc
 
 ## 7. Read the Results
 
+<details>
+<summary><strong>Understand findings, severity, and exit codes</strong></summary>
+
 | Exit code | Meaning | What to do |
 | --- | --- | --- |
 | `0` | No findings, or no findings at or above an explicit `--fail-on` threshold. | Review the report and retain evidence according to your process. |
 | `1` | The scan could not complete. This includes invalid options, unreadable state, unavailable AWS credentials, and audit-chain integrity failures. | Fix the stated problem. Do not replace or edit an existing audit file to bypass an integrity failure. |
 | `2` | Drift was found. The report and audit events were still written successfully. | Review the finding; decide whether Terraform or AWS represents the intended state; use your approved change process. |
+
+> [!NOTE]
+> Exit codes are for the shell, CI, and scheduled jobs. DriftCTL does not print them during an ordinary interactive scan because the terminal findings are the useful human-facing result. To inspect the code immediately after a command, use `$LASTEXITCODE` in PowerShell or `echo $?` in Bash/Zsh.
 
 | Drift type | Meaning |
 | --- | --- |
@@ -570,6 +585,8 @@ For every finding, DriftCTL shows both the difference and the information needed
 
 > [!WARNING]
 > A DriftCTL finding is evidence for review, not permission for automatic remediation. Decide whether the desired correction belongs in Terraform or AWS, get required approval, and make the change through your approved process.
+
+</details>
 
 ## 8. Run Future Scans
 
