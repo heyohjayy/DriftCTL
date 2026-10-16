@@ -256,7 +256,8 @@ You must configure and verify **both** profiles in this section before moving to
 > [!IMPORTANT]
 > Configuring `driftctl-readonly` does **not** create `driftctl-terraform-admin`. They need different credentials and are configured separately. Do not continue to `terraform plan` until both `aws sts get-caller-identity` checks below return successfully.
 
-### Configure the read-only scanning profile
+<details>
+<summary><strong>Configure the read-only scanning profile</strong></summary>
 
 First create an access key for the dedicated **read-only** IAM user: **AWS Console** > **IAM** > **Users** > `driftctl-readonly` > **Security credentials** > **Access keys** > **Create access key**. Select **Command Line Interface (CLI)**, continue, then copy the access key ID and secret access key when AWS displays them.
 
@@ -283,7 +284,10 @@ aws sts get-caller-identity --profile driftctl-readonly
 
 The returned ARN should identify the dedicated read-only IAM user, such as `:user/driftctl-readonly`.
 
-### Configure the Terraform administration profile
+</details>
+
+<details>
+<summary><strong>Configure the Terraform administration profile</strong></summary>
 
 This second profile is required before Terraform can create or destroy the disposable sample. Use an approved **non-root** IAM user or role; never create access keys for the AWS account root user. If you need an access key for an approved IAM user, obtain it through **AWS Console** > **IAM** > **Users** > select that approved administrative user > **Security credentials** > **Access keys** > **Create access key**, then select **Command Line Interface (CLI)**.
 
@@ -311,6 +315,8 @@ aws sts get-caller-identity --profile driftctl-terraform-admin
 The returned ARN must identify your separate administrative IAM user or role. It must **not** end with `:user/driftctl-readonly`.
 
 Do not continue until both identity commands have returned successfully. If the second command says the profile does not exist, rerun `aws configure --profile driftctl-terraform-admin` and complete its four prompts with the approved administrative user's credentials.
+
+</details>
 
 ## 5. Create the Disposable Terraform Example
 
@@ -395,13 +401,16 @@ output "driftctl_example_security_group_id" {
 
 </details>
 
-**Option B: Download the versioned Terraform example (recommended)**
+<details>
+<summary><strong>Option B: Download the versioned Terraform example (recommended)</strong></summary>
 
 This command downloads the exact same `main.tf` file shown in Option A from the matching DriftCTL release. Use it instead of manually copying the code above.
 
 ```bash
 curl -fsSLo ./main.tf https://raw.githubusercontent.com/heyohjayy/DriftCTL/v1.0.1/examples/live-usage/driftctl-example-security-group.tf
 ```
+
+</details>
 
 Set the administrative profile for Terraform. This affects this terminal only.
 

@@ -63,6 +63,22 @@ DriftCTL is designed to inspect **your existing Terraform-managed AWS environmen
 
 1. Install `pipx`. It installs the DriftCTL command in an isolated environment without requiring a repository clone. Platform-specific commands are in the [Usage Guide](docs/USAGE.md#3-install-required-tools).
 
+<details>
+<summary><strong>Linux: install pipx</strong></summary>
+
+Run this as one pasted Bash command. The trailing backslashes continue the command onto the next line; they are not separate commands.
+
+```bash
+sudo apt update && \
+sudo apt install -y python3-pip pipx && \
+pipx ensurepath && \
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+This path is for Ubuntu or Debian. `pipx ensurepath` makes the command available in future terminals; the final `export` also makes it available in the terminal you are using now.
+
+</details>
+
 2. Install the released package and confirm the product command:
 
 ```bash
