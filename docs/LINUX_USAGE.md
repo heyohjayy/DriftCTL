@@ -79,7 +79,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ```bash
-pipx install drift-ctl
+pipx install drift-control
 ```
 
 ```bash
