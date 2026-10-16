@@ -2,6 +2,18 @@
 
 All notable DriftCTL changes are documented here. DriftCTL follows semantic versioning for releases.
 
+## Unreleased
+
+### Added
+
+- Package-first installation through the `drift-ctl` PyPI distribution while preserving the `driftctl` command.
+- `driftctl init`, which writes a safe, non-secret `driftctl.toml` in a Terraform project.
+- A release-triggered PyPI trusted-publishing workflow.
+
+### Changed
+
+- First-use documentation now uses `pipx install drift-ctl`; cloning remains an optional source and contribution workflow.
+
 ## 1.0.0
 
 First stable release of the read-only Terraform-to-AWS drift-detection CLI.
@@ -23,7 +35,3 @@ First stable release of the read-only Terraform-to-AWS drift-detection CLI.
 
 - DriftCTL does not run Terraform mutation commands, change Terraform state, or call AWS mutation APIs.
 - Live collection is designed for a separately configured least-privilege read-only AWS identity.
-
-## Unreleased
-
-- Jenkins and optional GitHub Actions drift-monitoring runners are planned for the next release line. They will not introduce automatic remediation.

@@ -35,7 +35,7 @@ DriftCTL is strictly read-only. Contributions must not add AWS mutation APIs or 
    git switch -c feature/short-description
    ```
 
-3. Create and activate a Python virtual environment. Follow the terminal-specific instructions in the [Usage Guide](docs/USAGE.md#4-clone-and-install-driftctl).
+3. Create and activate a Python virtual environment with Python 3.11 or later. The package-install path in the [Usage Guide](docs/USAGE.md#4-install-driftctl) is for ordinary users; contributors work from this source checkout.
 
 4. Install the project and development dependencies:
 

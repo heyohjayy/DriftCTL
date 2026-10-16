@@ -3,8 +3,8 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "infra-drift-control"
-version = "1.0.0"
+name = "drift-ctl"
+version = "1.0.1"
 description = "A local, policy-driven Terraform-to-AWS drift detection engine."
 readme = "README.md"
 requires-python = ">=3.11"

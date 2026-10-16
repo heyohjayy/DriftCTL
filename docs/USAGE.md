@@ -18,7 +18,7 @@ DriftCTL compares **applied Terraform state** with the corresponding live AWS co
 1. [What You Need](#1-what-you-need)
 2. [Command Reference](#2-command-reference)
 3. [Install Required Tools](#3-install-required-tools)
-4. [Clone and Install DriftCTL](#4-clone-and-install-driftctl)
+4. [Install DriftCTL](#4-install-driftctl)
 5. [Prepare AWS Read-Only Access](#5-prepare-aws-read-only-access)
 6. [Choose Your First Scan](#6-choose-your-first-scan)
 7. [Read the Results](#7-read-the-results)
@@ -29,7 +29,8 @@ DriftCTL compares **applied Terraform state** with the corresponding live AWS co
 
 | Requirement | Why it is needed | Offline demo | Your live scan |
 | --- | --- | --- | --- |
-| Git | Clones this repository. | Yes | Yes |
+| `pipx` | Installs the DriftCTL command in an isolated environment. | Yes | Yes |
+| Git | Required only for source installation or repository examples. | Optional | Optional |
 | Python 3.11 or later | Runs DriftCTL. | Yes | Yes |
 | Terraform CLI | Reads applied state with `terraform show -json`. | No | Yes |
 | AWS CLI | Configures and verifies the AWS scanning identity. | No | Yes |
@@ -45,6 +46,7 @@ Your Terraform files and state come from **your own Terraform project**, not fro
 
 | Command | Purpose | When to use it |
 | --- | --- | --- |
+| `driftctl init` | Interactively creates a non-secret `driftctl.toml` in the current Terraform directory. | First live scan. |
 | `driftctl scan` | Scans using `driftctl.toml` in the current Terraform directory. | Normal, repeatable live use. |
 | `driftctl scan --expected <file> --live <file> --report <path> --audit <path>` | Compares two local fixture files without AWS. | Safe offline evaluation. |
 | `driftctl scan --terraform-dir <path> --profile <profile> --region <region> --report <path> --audit <path>` | Supplies live-scan options directly. | One-off scans or testing configuration before saving it. |
@@ -57,18 +59,23 @@ Your Terraform files and state come from **your own Terraform project**, not fro
 
 ## 3. Install Required Tools
 
-Install Git, Python 3.11 or later, Terraform, and AWS CLI before installing DriftCTL. Use an administrator-approved install method on managed devices.
+Install Python 3.11 or later, `pipx`, Terraform, and AWS CLI before installing DriftCTL. Git is optional unless you want a source checkout or repository examples. Use an administrator-approved install method on managed devices.
 
-### Windows
+<details>
+<summary><strong>Windows</strong></summary>
 
 Open **PowerShell** or the integrated PowerShell terminal in VS Code. The following commands use Windows Package Manager (`winget`); run them one at a time. Restart the terminal after installation so its `PATH` updates.
 
 ```powershell
-winget install --id Git.Git -e --source winget
+winget install --id Python.Python.3.11 -e --source winget
 ```
 
 ```powershell
-winget install --id Python.Python.3.11 -e --source winget
+py -3 -m pip install --user pipx
+```
+
+```powershell
+py -3 -m pipx ensurepath
 ```
 
 ```powershell
@@ -79,16 +86,19 @@ winget install --id Hashicorp.Terraform -e --source winget
 winget install --id Amazon.AWSCLI -e --source winget
 ```
 
-### macOS
+</details>
+
+<details>
+<summary><strong>macOS</strong></summary>
 
 Open Terminal or the integrated terminal in VS Code. With [Homebrew](https://brew.sh/) installed, run these commands one at a time:
 
 ```bash
-brew install git
+brew install python
 ```
 
 ```bash
-brew install python
+brew install pipx
 ```
 
 ```bash
@@ -99,16 +109,19 @@ brew install hashicorp/tap/terraform
 brew install awscli
 ```
 
-### Linux (Ubuntu or Debian)
+</details>
 
-Open a terminal or the integrated terminal in VS Code. These commands install Git, Python tooling, and the AWS CLI. Follow HashiCorp's [official Terraform install instructions](https://developer.hashicorp.com/terraform/install) if your distribution differs from Ubuntu or Debian.
+<details>
+<summary><strong>Linux (Ubuntu or Debian)</strong></summary>
+
+Open a terminal or the integrated terminal in VS Code. These commands install Python tooling and the AWS CLI. Follow HashiCorp's [official Terraform install instructions](https://developer.hashicorp.com/terraform/install) if your distribution differs from Ubuntu or Debian.
 
 ```bash
 sudo apt update
 ```
 
 ```bash
-sudo apt install -y git python3 python3-venv curl unzip gpg
+sudo apt install -y python3 python3-pip pipx curl unzip gpg
 ```
 
 ```bash
@@ -127,13 +140,11 @@ sudo apt update && sudo apt install -y terraform
 curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
 ```
 
+</details>
+
 ### Verify the tools
 
 Run each command separately in your chosen terminal.
-
-```powershell
-git --version
-```
 
 **Windows PowerShell**
 
@@ -158,103 +169,23 @@ aws --version
 > [!WARNING]
 > Do not continue if Python reports a version older than 3.11. Install a supported Python version, then open a new terminal and verify it again. Do not run Windows-only `py` commands in macOS or Linux terminals.
 
-## 4. Clone and Install DriftCTL
+## 4. Install DriftCTL
 
-### 4.1 Clone the repository
-
-In a terminal in the folder where you keep projects, run:
-
-```powershell
-git clone https://github.com/heyohjayy/DriftCTL.git
-```
-
-```powershell
-cd DriftCTL
-```
-
-The folder created by `git clone` is named `DriftCTL`. From this point, `DriftCTL` means the cloned repository root on your own computer.
-
-### 4.2 Create and activate a Python environment
-
-**Windows PowerShell**
-
-```powershell
-py -3 -m venv .venv
-```
-
-> [!NOTE]
-> If the Windows `py` launcher is unavailable, use `python -m venv .venv` after confirming `python --version` is 3.11 or later. Do not use this Windows command on macOS or Linux.
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-**macOS or Linux (Bash/Zsh)**
+After installing `pipx`, close and reopen your terminal so its `PATH` includes the `pipx` application directory. Then install DriftCTL without cloning this repository:
 
 ```bash
-python3 -m venv .venv
-```
-
-```bash
-source .venv/bin/activate
-```
-
-When activation succeeds, your terminal prompt starts with `(.venv)`.
-
-### 4.3 Install the tool
-
-With the virtual environment active, run the commands for your platform one at a time:
-
-**Windows PowerShell**
-
-```powershell
-python -m pip install --upgrade pip
-```
-
-```powershell
-python -m pip install -e ".[dev]"
-```
-
-```powershell
-driftctl --help
-```
-
-**macOS or Linux (Bash/Zsh)**
-
-```bash
-python3 -m pip install --upgrade pip
-```
-
-```bash
-python3 -m pip install -e ".[dev]"
+pipx install drift-ctl
 ```
 
 ```bash
 driftctl --help
 ```
 
-> [!NOTE]
-> On a managed Windows device, an enterprise application-control policy can block the unsigned `driftctl.exe` launcher created by `pip`. The steps below apply only when you see that exact launcher-blocking error. They do not change AWS, Terraform, or Windows security policy.
+`pipx` keeps DriftCTL and its Python dependencies isolated from your Terraform project. Do not run `driftctl scan` yet; first prepare read-only AWS access and a Terraform project in the next sections.
 
-From the DriftCTL repository root, run these commands one at a time in PowerShell:
+### Install from source (optional)
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-```powershell
-.\scripts\Enable-WindowsDevCli.ps1
-```
-
-```powershell
-driftctl --help
-```
-
-The script creates a local command shim inside this virtual environment. It makes the normal `driftctl` command available; do not run `driftctl scan` yet. A scan needs either the offline fixtures or a configured Terraform project, both covered in section 6.
+Use this only when contributing, developing DriftCTL, or running repository examples directly. Clone the source, create a Python 3.11+ virtual environment, activate it, then run `python -m pip install -e ".[dev]"`. Contributors should follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## 5. Prepare AWS Read-Only Access
 
@@ -383,7 +314,7 @@ You need two **different credential pairs** for this option:
 
 For a complete Ubuntu/Debian example that creates, configures, and verifies both local profiles before this step, see the [Linux quick walkthrough](LINUX_USAGE.md#4-configure-aws-cli-profiles).
 
-Create a folder outside the DriftCTL repository and copy the sample into it.
+Create a folder for the sample outside any source checkout, then download the versioned Terraform file. No repository clone is required.
 
 **Windows PowerShell**
 
@@ -392,14 +323,12 @@ New-Item -ItemType Directory -Path "$HOME\driftctl-live-example"
 ```
 
 ```powershell
-Copy-Item "$HOME\DriftCTL\examples\live-usage\driftctl-example-security-group.tf" "$HOME\driftctl-live-example\main.tf"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/heyohjayy/DriftCTL/v1.0.1/examples/live-usage/driftctl-example-security-group.tf" -OutFile "$HOME\driftctl-live-example\main.tf"
 ```
 
 ```powershell
 cd "$HOME\driftctl-live-example"
 ```
-
-> **Important:** This command works as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `$HOME\DriftCTL` only if you cloned the repository somewhere else.
 
 **macOS or Linux (Bash/Zsh)**
 
@@ -408,14 +337,12 @@ mkdir -p ~/driftctl-live-example
 ```
 
 ```bash
-cp ~/DriftCTL/examples/live-usage/driftctl-example-security-group.tf ~/driftctl-live-example/main.tf
+curl -fsSLo ~/driftctl-live-example/main.tf https://raw.githubusercontent.com/heyohjayy/DriftCTL/v1.0.1/examples/live-usage/driftctl-example-security-group.tf
 ```
 
 ```bash
 cd ~/driftctl-live-example
 ```
-
-> **Important:** This command works as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `~/DriftCTL` only if you cloned the repository somewhere else.
 
 Set your approved administrative Terraform profile, then create the sample.
 
@@ -467,44 +394,10 @@ terraform apply driftctl-live-example.tfplan
 
 > **Important:** `us-east-1` is a **placeholder**. Replace it with the AWS Region where you want to create the disposable example, and use the same Region in its scan configuration below.
 
-Copy the configuration template into the example directory.
-
-**Windows PowerShell**
-
-```powershell
-Copy-Item "$HOME\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
-```
-
-**macOS or Linux (Bash/Zsh)**
+Create the non-secret scan configuration in the example directory. This writes `driftctl.toml` without opening an editor:
 
 ```bash
-cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
-```
-
-> **Important:** These commands work as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `$HOME\DriftCTL` or `~/DriftCTL` only if you cloned the repository somewhere else.
-
-Open `driftctl.toml` in VS Code or another plain-text editor, then replace the example values:
-
-```powershell
-code .\driftctl.toml
-```
-
-**macOS or Linux (Bash/Zsh)**
-
-```bash
-code ./driftctl.toml
-```
-
-> If the `code` command is unavailable, open `driftctl.toml` manually in any plain-text editor.
-
-```toml
-[scan]
-terraform_dir = "."
-aws_profile = "driftctl-readonly"
-region = "us-east-1"
-tags = ["Project=DriftCTLExample"]
-report = "driftctl-output/live-report.md"
-audit = "driftctl-output/events.jsonl"
+driftctl init --profile driftctl-readonly --region us-east-1 --tag Project=DriftCTLExample
 ```
 
 > **Important:** `driftctl-readonly` and `us-east-1` are **placeholders**. Replace them with your own read-only profile name and the Region you chose for the disposable example. Keep `Project=DriftCTLExample` unchanged for this sample.
@@ -523,7 +416,7 @@ Remove-Item Env:AWS_PROFILE
 unset AWS_PROFILE
 ```
 
-With the DriftCTL Python environment still active, remain in the example directory and run the branded command:
+Remain in the example directory and run the branded command:
 
 ```powershell
 driftctl scan
@@ -554,7 +447,7 @@ This is the normal DriftCTL product workflow. Use the Terraform directory that o
 
 ### Confirm Terraform can read the applied state
 
-Open a new terminal, or use the active `(.venv)` terminal, and move to your Terraform project directory.
+Open a terminal where `driftctl --help` works, then move to your Terraform project directory.
 
 **Windows PowerShell**
 
@@ -582,54 +475,21 @@ If Terraform cannot read the state, fix that before continuing. For a remote bac
 
 ### Add the local scan configuration
 
-Copy the configuration template into the root of **your Terraform project**. Do not put it in the DriftCTL repository unless that repository is also your Terraform project.
-
-**Windows PowerShell**
-
-```powershell
-Copy-Item "$HOME\DriftCTL\examples\driftctl.toml.example" .\driftctl.toml
-```
-
-**macOS or Linux (Bash/Zsh)**
+From the root of **your Terraform project**, run:
 
 ```bash
-cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+driftctl init
 ```
 
-> **Important:** These commands work as written when you ran `git clone` from your home directory and accepted the default `DriftCTL` folder name. Replace `$HOME\DriftCTL` or `~/DriftCTL` only if you cloned the repository somewhere else.
+Enter the following when prompted:
 
-Open `driftctl.toml` in VS Code or another plain-text editor, then replace the example values:
-
-```powershell
-code .\driftctl.toml
-```
-
-**macOS or Linux (Bash/Zsh)**
-
-```bash
-code ./driftctl.toml
-```
-
-> If the `code` command is unavailable, open `driftctl.toml` manually in any plain-text editor.
-
-```toml
-[scan]
-terraform_dir = "."
-aws_profile = "driftctl-readonly"
-region = "us-east-1"
-tags = ["Environment=dev"]
-report = "driftctl-output/live-report.md"
-audit = "driftctl-output/events.jsonl"
-```
-
-| Setting | What to set |
+| Prompt | What to enter |
 | --- | --- |
-| `terraform_dir` | Usually `"."`, which means this Terraform project directory. |
-| `aws_profile` | Your dedicated read-only AWS profile. `driftctl-readonly` is a **placeholder**. |
-| `region` | The AWS Region containing the resources you intend to inspect. `us-east-1` is a **placeholder**. |
-| `tags` | Optional exact scope shared by Terraform resources and live AWS resources. `Environment=dev` is a **placeholder**; remove the line to scan all supported resources in the Region. |
-| `report` | A local Markdown report path. |
-| `audit` | A local JSONL audit-log path. |
+| `AWS CLI profile` | Your dedicated read-only profile. `driftctl-readonly` is an example name. |
+| `AWS Region` | The Region containing the resources you intend to inspect, such as `eu-west-1`. |
+| `Optional tag scope` | An exact scope such as `Environment=dev`, or press Enter to scan all supported resources in the Region. |
+
+The command creates a non-secret `driftctl.toml` with `terraform_dir = "."`, report path `driftctl-output/live-report.md`, and audit path `driftctl-output/events.jsonl`.
 
 > **Important:** If you use `tags`, both the Terraform-managed resource and the live AWS resource must have every listed tag. A tag filter is a safety boundary: resources outside it will not be evaluated as drift.
 
@@ -648,7 +508,7 @@ audit/*.jsonl
 
 ### Run the scan
 
-Make sure the DriftCTL virtual environment is still active, remain in your Terraform project directory, and run:
+Remain in your Terraform project directory and run:
 
 ```powershell
 driftctl scan
@@ -678,11 +538,17 @@ driftctl scan --terraform-dir "/path/to/your/terraform-project" --profile driftc
 
 ## 7. Read the Results
 
+<details>
+<summary><strong>Understand findings, severity, and exit codes</strong></summary>
+
 | Exit code | Meaning | What to do |
 | --- | --- | --- |
 | `0` | No findings, or no findings at or above an explicit `--fail-on` threshold. | Review the report and retain evidence according to your process. |
 | `1` | The scan could not complete. This includes invalid options, unreadable state, unavailable AWS credentials, and audit-chain integrity failures. | Fix the stated problem. Do not replace or edit an existing audit file to bypass an integrity failure. |
 | `2` | Drift was found. The report and audit events were still written successfully. | Review the finding; decide whether Terraform or AWS represents the intended state; use your approved change process. |
+
+> [!NOTE]
+> Exit codes are for the shell, CI, and scheduled jobs. DriftCTL does not print them during an ordinary interactive scan because the terminal findings are the useful human-facing result. To inspect the code immediately after a command, use `$LASTEXITCODE` in PowerShell or `echo $?` in Bash/Zsh.
 
 | Drift type | Meaning |
 | --- | --- |
@@ -720,9 +586,11 @@ For every finding, DriftCTL shows both the difference and the information needed
 > [!WARNING]
 > A DriftCTL finding is evidence for review, not permission for automatic remediation. Decide whether the desired correction belongs in Terraform or AWS, get required approval, and make the change through your approved process.
 
+</details>
+
 ## 8. Run Future Scans
 
-Keep the same `driftctl.toml` in your Terraform project. Activate the DriftCTL environment, change to the Terraform project directory, and run:
+Keep the same `driftctl.toml` in your Terraform project, change to that directory, and run:
 
 ```powershell
 driftctl scan
@@ -742,8 +610,8 @@ This does not change the report, audit evidence, or read-only behavior. It is us
 
 | Problem | Resolution |
 | --- | --- |
-| `driftctl` is not recognized | Activate the virtual environment, then run `python -m pip install -e ".[dev]"` from the DriftCTL repository. |
-| Windows blocks `driftctl.exe` | Follow the scoped note in [Install the tool](#43-install-the-tool) and run `scripts/Enable-WindowsDevCli.ps1` from the repository root. |
+| `driftctl` is not recognized | Open a new terminal after `pipx ensurepath`, then run `pipx install drift-ctl`. Use `pipx list` to confirm the installation. |
+| Windows blocks `driftctl.exe` | Reinstall with `pipx install --force drift-ctl`. If an enterprise policy blocks the `pipx` launcher, contact the device administrator; the repository development shim applies only to source installations. |
 | AWS credentials cannot be found | Verify the profile with `aws sts get-caller-identity --profile <your-profile>`, replacing `<your-profile>` with your actual read-only profile name. Make it match `driftctl.toml`. |
 | `Saved plan is stale` | Do not apply the old plan file. Run `terraform plan` again, review the new plan with `terraform show`, then apply only the new plan. A previous failed operation can update local state metadata even when it created no AWS resources. |
 | Terraform state cannot be read | Work from the Terraform root that owns the applied state and confirm `terraform show -json` succeeds there. |

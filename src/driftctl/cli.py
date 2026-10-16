@@ -33,6 +33,38 @@ def main() -> None:
 
 
 @app.command()
+def init(
+    directory: Path = typer.Option(Path("."), "--directory", "-d", exists=True, file_okay=False, readable=True, help="Terraform project directory in which to create driftctl.toml."),
+    profile: str | None = typer.Option(None, "--profile", help="AWS CLI profile to save without prompting."),
+    region: str | None = typer.Option(None, "--region", help="AWS Region to save without prompting."),
+    tag: list[str] = typer.Option([], "--tag", help="Optional environment scope in KEY=VALUE form; repeat for more tags."),
+    force: bool = typer.Option(False, "--force", help="Replace an existing driftctl.toml."),
+) -> None:
+    """Create a non-secret scan configuration in a Terraform project."""
+    config_path = directory / "driftctl.toml"
+    if config_path.exists() and not force:
+        typer.echo(f"Scan configuration already exists: {config_path}. Use --force to replace it.", err=True)
+        raise typer.Exit(code=1)
+
+    selected_profile = _required_init_value(profile, "AWS CLI profile", "driftctl-readonly")
+    selected_region = _required_init_value(region, "AWS Region")
+    selected_tags = tag or _prompt_init_tags()
+    try:
+        parse_tag_scope(selected_tags)
+    except ValueError as error:
+        typer.echo(f"Configuration failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+    try:
+        config_path.write_text(_render_initial_config(selected_profile, selected_region, selected_tags), encoding="utf-8")
+    except OSError as error:
+        typer.echo(f"Configuration failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"Created {config_path}")
+    typer.echo("Run driftctl scan from this Terraform project after verifying Terraform state and AWS credentials.")
+
+
+@app.command()
 def scan(
     expected: Path | None = typer.Option(None, "--expected", exists=True, readable=True, help="Terraform show -json-style expected inventory fixture."),
     live: Path | None = typer.Option(None, "--live", exists=True, readable=True, help="Boto3 response-style live inventory fixture."),
@@ -90,6 +122,34 @@ def _scan_exit_code(findings: list[Finding], fail_on: Severity | None) -> int:
     if fail_on is None:
         return 2
     return 2 if any(finding.severity and _SEVERITY_RANK[finding.severity] >= _SEVERITY_RANK[fail_on] for finding in findings) else 0
+
+
+def _required_init_value(value: str | None, label: str, default: str | None = None) -> str:
+    selected = value if value is not None else typer.prompt(label, default=default)
+    if not selected.strip():
+        raise typer.BadParameter(f"{label} cannot be empty.")
+    return selected.strip()
+
+
+def _prompt_init_tags() -> list[str]:
+    value = typer.prompt("Optional tag scope (KEY=VALUE; leave blank for all supported resources)", default="")
+    return [value.strip()] if value.strip() else []
+
+
+def _render_initial_config(profile: str, region: str, tags: list[str]) -> str:
+    """Render the safe starter configuration without storing credentials."""
+    return "\n".join(
+        (
+            "[scan]",
+            'terraform_dir = "."',
+            f"aws_profile = {json.dumps(profile)}",
+            f"region = {json.dumps(region)}",
+            f"tags = {json.dumps(tags)}",
+            'report = "driftctl-output/live-report.md"',
+            'audit = "driftctl-output/events.jsonl"',
+            "",
+        )
+    )
 
 
 def _resolve_options(
