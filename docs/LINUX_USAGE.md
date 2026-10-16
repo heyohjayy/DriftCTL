@@ -29,7 +29,7 @@ sudo apt update
 ```
 
 ```bash
-sudo apt install -y git python3 python3-venv curl unzip gpg
+sudo apt install -y python3 python3-pip pipx curl unzip gpg
 ```
 
 ```bash
@@ -55,10 +55,6 @@ curl -fsSL https://awscli.amazonaws.com/v2/install.sh | sudo bash -s -- --system
 Verify each tool. Python must be version 3.11 or later.
 
 ```bash
-git --version
-```
-
-```bash
 python3 --version
 ```
 
@@ -70,38 +66,20 @@ terraform --version
 aws --version
 ```
 
-## 2. Clone and Install DriftCTL
+## 2. Install DriftCTL
 
-Run these commands from your Linux home directory. They deliberately create the standard location `~/DriftCTL`, which the later commands use exactly as written.
+Install DriftCTL with `pipx`. This creates an isolated Python environment for the command; it does not clone this repository or require you to create a virtual environment.
 
 ```bash
-cd ~
+pipx ensurepath
 ```
 
 ```bash
-git clone https://github.com/heyohjayy/DriftCTL.git
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ```bash
-cd ~/DriftCTL
-```
-
-```bash
-python3 -m venv .venv
-```
-
-```bash
-source .venv/bin/activate
-```
-
-Your prompt should now start with `(.venv)`.
-
-```bash
-python3 -m pip install --upgrade pip
-```
-
-```bash
-python3 -m pip install -e ".[dev]"
+pipx install drift-ctl
 ```
 
 ```bash
@@ -109,7 +87,7 @@ driftctl --help
 ```
 
 > [!NOTE]
-> Do not run `driftctl scan` yet. It needs either a configured Terraform project or explicit fixture files. This walkthrough creates and configures the disposable Terraform project next.
+> Do not run `driftctl scan` yet. It needs a configured Terraform project. This walkthrough creates and configures a disposable project next.
 
 ## 3. Create the Dedicated Read-Only AWS Identity
 
@@ -415,10 +393,10 @@ output "driftctl_example_security_group_id" {
 
 </details>
 
-For a direct copy from the cloned repository instead, use this command. It creates the same `main.tf` file:
+Download the versioned Terraform example into the current folder:
 
 ```bash
-cp ~/DriftCTL/examples/live-usage/driftctl-example-security-group.tf ./main.tf
+curl -fsSLo ./main.tf https://raw.githubusercontent.com/heyohjayy/DriftCTL/v1.0.1/examples/live-usage/driftctl-example-security-group.tf
 ```
 
 Set the administrative profile for Terraform. This affects this terminal only.
@@ -455,43 +433,14 @@ terraform apply driftctl-live-example.tfplan
 
 ## 6. Configure DriftCTL for the Example
 
-Copy the configuration template into the disposable Terraform directory.
+Create the non-secret scan configuration in the disposable Terraform directory. This writes `driftctl.toml` automatically; it does not store AWS credentials.
 
 ```bash
-cp ~/DriftCTL/examples/driftctl.toml.example ./driftctl.toml
+driftctl init --profile driftctl-readonly --region eu-west-1 --tag Project=DriftCTLExample
 ```
 
-Open it in a terminal editor.
-
-```bash
-vi driftctl.toml
-```
-
-In `vi`, press `i` to enter insert mode, replace the complete contents with the following, then press `Esc`, type `:wq`, and press Enter to save and exit.
-
-```toml
-[scan]
-terraform_dir = "."
-aws_profile = "driftctl-readonly"
-region = "eu-west-1"
-tags = ["Project=DriftCTLExample"]
-report = "driftctl-output/live-report.md"
-audit = "driftctl-output/events.jsonl"
-```
-
-The virtual environment is the local `.venv` Python environment created in step 2. It was activated in the earlier terminal. If you opened a new terminal, activate it again before the scan:
-
-```bash
-cd ~/DriftCTL
-```
-
-```bash
-source .venv/bin/activate
-```
-
-```bash
-cd ~/driftctl-live-example
-```
+> [!IMPORTANT]
+> `driftctl-readonly` and `eu-west-1` are example values. Replace them if you chose a different read-only AWS profile or Region. Keep `Project=DriftCTLExample` unchanged for this sample.
 
 ## 7. Run the Read-Only Scan
 
@@ -538,7 +487,7 @@ Confirm the local Terraform state no longer contains the disposable resources.
 terraform state list
 ```
 
-The command should return no resources. The DriftCTL tool remains installed in `~/DriftCTL`; you can reuse it later with a different Terraform project and a read-only profile.
+The command should return no resources. DriftCTL remains installed through `pipx`; you can reuse it later with a different Terraform project and a read-only profile.
 
 ## Next Steps
 
