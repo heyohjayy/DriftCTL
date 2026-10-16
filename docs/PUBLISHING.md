@@ -1,19 +1,19 @@
 # Publishing DriftCTL
 
-This maintainer guide publishes the `drift-ctl` distribution to PyPI while preserving the user-facing `driftctl` command. It is not part of ordinary installation or scanning.
+This maintainer guide publishes the `drift-control` distribution to PyPI while preserving the user-facing `driftctl` command. It is not part of ordinary installation or scanning.
 
 ## Release Model
 
-- **PyPI distribution:** `drift-ctl`
+- **PyPI distribution:** `drift-control`
 - **Python import package:** `driftctl`
 - **Terminal command:** `driftctl scan`
 
-PyPI normalizes hyphens and underscores in project names, so `drift-ctl` and `drift_ctl` identify the same distribution name. Confirm the name is still available immediately before the first release.
+PyPI normalizes hyphens and underscores in project names, so `drift-control` and `drift_control` identify the same distribution name. The project's pending trusted publisher is already registered for `drift-control`; publish promptly because a pending publisher does not reserve the name.
 
 ## One-Time PyPI Setup
 
 1. Create or sign in to the project's PyPI maintainer account.
-2. In PyPI, add a pending GitHub Actions trusted publisher for the `drift-ctl` project:
+2. In PyPI, add a pending GitHub Actions trusted publisher for the `drift-control` project:
    - Owner: `heyohjayy`
    - Repository: `DriftCTL`
    - Workflow: `publish.yml`
@@ -32,7 +32,7 @@ The pending publisher does not reserve the package name. It creates the PyPI pro
 6. Confirm the package appears on PyPI, then verify a clean installation in a new terminal:
 
    ```bash
-   pipx install drift-ctl==1.0.1
+   pipx install drift-control==1.0.1
    driftctl --help
    ```
 

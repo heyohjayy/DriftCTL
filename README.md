@@ -82,7 +82,7 @@ This path is for Ubuntu or Debian. `pipx ensurepath` makes the command available
 2. Install the released package and confirm the product command:
 
 ```bash
-pipx install drift-ctl
+pipx install drift-control
 ```
 
 ```bash

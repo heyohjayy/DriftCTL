@@ -174,7 +174,7 @@ aws --version
 After installing `pipx`, close and reopen your terminal so its `PATH` includes the `pipx` application directory. Then install DriftCTL without cloning this repository:
 
 ```bash
-pipx install drift-ctl
+pipx install drift-control
 ```
 
 ```bash
@@ -610,8 +610,8 @@ This does not change the report, audit evidence, or read-only behavior. It is us
 
 | Problem | Resolution |
 | --- | --- |
-| `driftctl` is not recognized | Open a new terminal after `pipx ensurepath`, then run `pipx install drift-ctl`. Use `pipx list` to confirm the installation. |
-| Windows blocks `driftctl.exe` | Reinstall with `pipx install --force drift-ctl`. If an enterprise policy blocks the `pipx` launcher, contact the device administrator; the repository development shim applies only to source installations. |
+| `driftctl` is not recognized | Open a new terminal after `pipx ensurepath`, then run `pipx install drift-control`. Use `pipx list` to confirm the installation. |
+| Windows blocks `driftctl.exe` | Reinstall with `pipx install --force drift-control`. If an enterprise policy blocks the `pipx` launcher, contact the device administrator; the repository development shim applies only to source installations. |
 | AWS credentials cannot be found | Verify the profile with `aws sts get-caller-identity --profile <your-profile>`, replacing `<your-profile>` with your actual read-only profile name. Make it match `driftctl.toml`. |
 | `Saved plan is stale` | Do not apply the old plan file. Run `terraform plan` again, review the new plan with `terraform show`, then apply only the new plan. A previous failed operation can update local state metadata even when it created no AWS resources. |
 | Terraform state cannot be read | Work from the Terraform root that owns the applied state and confirm `terraform show -json` succeeds there. |

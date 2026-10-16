@@ -6,13 +6,13 @@ All notable DriftCTL changes are documented here. DriftCTL follows semantic vers
 
 ### Added
 
-- Package-first installation through the `drift-ctl` PyPI distribution while preserving the `driftctl` command.
+- Package-first installation through the `drift-control` PyPI distribution while preserving the `driftctl` command.
 - `driftctl init`, which writes a safe, non-secret `driftctl.toml` in a Terraform project.
 - A release-triggered PyPI trusted-publishing workflow.
 
 ### Changed
 
-- First-use documentation now uses `pipx install drift-ctl`; cloning remains an optional source and contribution workflow.
+- First-use documentation now uses `pipx install drift-control`; cloning remains an optional source and contribution workflow.
 
 ## 1.0.0
 
