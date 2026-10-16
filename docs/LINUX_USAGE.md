@@ -71,18 +71,9 @@ aws --version
 Install DriftCTL with `pipx`. This creates an isolated Python environment for the command; it does not clone this repository or require you to create a virtual environment.
 
 ```bash
-pipx ensurepath
-```
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-```bash
-pipx install drift-control
-```
-
-```bash
+pipx ensurepath && \
+export PATH="$HOME/.local/bin:$PATH" && \
+pipx install drift-control && \
 driftctl --help
 ```
 

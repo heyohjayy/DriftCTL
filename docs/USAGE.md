@@ -171,13 +171,12 @@ aws --version
 
 ## 4. Install DriftCTL
 
-After installing `pipx`, close and reopen your terminal so its `PATH` includes the `pipx` application directory. Then install DriftCTL without cloning this repository:
+After installing `pipx`, run the command below in Bash or Zsh to add the `pipx` application directory to both future terminals and the terminal you are using now, then install DriftCTL without cloning this repository:
 
 ```bash
-pipx install drift-control
-```
-
-```bash
+pipx ensurepath && \
+export PATH="$HOME/.local/bin:$PATH" && \
+pipx install drift-control && \
 driftctl --help
 ```
 
