@@ -52,7 +52,7 @@ The optional controlled-validation procedures in [the validation guide](docs/VAL
 
 ## Quick Walkthrough Video
 
-[![Watch the DriftCTL quick walkthrough video](https://drive.google.com/thumbnail?id=1bxpyVSQ1-5rGvXKs6S5Fe4Eo3kD3c4rV&sz=w1200)](https://drive.google.com/file/d/1bxpyVSQ1-5rGvXKs6S5Fe4Eo3kD3c4rV/view?usp=sharing)
+[![Watch the DriftCTL quick walkthrough video](docs/assets/driftctl-video-thumbnail.png)](https://drive.google.com/file/d/1U6NtNz159ifVqohTmNyWy6fPstm8255j/view?usp=sharing)
 
 ## Quick Start
 
